@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10151d">
+  <title>KaraLoki — Host Controls</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">KaraLoki <span class="admin-brand">HOST</span></div>
+    <div class="now-playing">
+      <div class="eyebrow">CURRENT SONG</div>
+      <div id="current-song" class="current-title">Nothing is playing yet</div>
+      <div id="current-requester" class="muted">No active request</div>
+      <div class="timer-line"><span id="playback-state" class="status-pill">Waiting</span><span id="countdown" class="countdown">—</span></div>
+    </div>
+  </header>
+
+  <main class="page admin-page">
+    <section class="panel" id="login-panel">
+      <h2>Host access</h2>
+      <p class="muted small">Enter the reserved owner name to open the controls.</p>
+      <form id="admin-login-form">
+        <label>Owner name
+          <input id="owner-name" maxlength="32" autocomplete="username" placeholder="Enter owner name" required>
+        </label>
+        <button class="primary" type="submit" id="login-button">Open host controls</button>
+        <p id="login-message" class="message" aria-live="polite"></p>
+      </form>
+      <p class="small muted">The owner name is <strong>RadioLoki</strong>. This is a shared-name convenience gate, not secure authentication.</p>
+    </section>
+
+    <div id="admin-content" class="hidden">
+      <section class="panel">
+        <div class="section-heading"><h2>Playback controls</h2><button id="lock-button" class="quiet compact" type="button">Lock</button></div>
+        <div class="control-grid">
+          <button id="back-button" class="secondary" type="button">⏮ Back</button>
+          <button id="pause-button" class="primary" type="button">Ⅱ Pause</button>
+          <button id="forward-button" class="secondary" type="button">⏭ Forward</button>
+        </div>
+        <p id="control-message" class="message" aria-live="polite"></p>
+        <p class="small muted">Back restores the most recently completed or skipped song. Forward skips the current song.</p>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading"><h2>Manage queue</h2><span id="queue-count" class="count-pill">0 songs</span></div>
+        <ol id="queue-list" class="queue-list"><li class="empty">The queue is empty.</li></ol>
+        <p class="small muted">Use the arrows to change a song's position or remove an unwanted request.</p>
+      </section>
+    </div>
+    <footer class="footer muted"><a href="index.html">← Back to public queue</a></footer>
+  </main>
+  <script src="js/config.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>
