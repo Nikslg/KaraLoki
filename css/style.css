@@ -254,3 +254,14 @@ body{
 .guest-heading-actions{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .guest-heading-actions .count-pill{white-space:nowrap}
 @media(max-width:520px){.admin-workspace{gap:13px}.playback-controls-section{padding-top:12px}.guest-heading-actions{gap:5px}}
+
+
+/* v1.8.5 Admin panel spacing and combined playback/request workspace */
+#admin-content{display:grid;gap:16px}
+.admin-workspace{display:block}
+.admin-workspace .admin-tabs{margin-top:16px}
+#admin-content .admin-tab-panel{gap:16px}
+.admin-request-workspace{display:grid;gap:18px}
+.admin-request-workspace .playback-controls-section{border-top:0;padding-top:0}
+.admin-request-section{border-top:1px solid var(--border);padding-top:18px}
+@media(max-width:520px){#admin-content{gap:12px}.admin-request-workspace{gap:15px}.admin-request-section{padding-top:15px}}

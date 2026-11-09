@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.8.4 — guest client.
+  // KaraLoki v1.8.5 — guest client.
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
@@ -81,7 +81,7 @@
   }
   async function refresh(force=false){
     if(refreshBusy){if(!force)return;while(refreshBusy)await new Promise(resolve=>setTimeout(resolve,40));}
-    refreshBusy=true;try{const result=await api("state",{guestName});if(!playbackTransitionBusy)render(result.state);}catch(e){if(!lastState){$("startup-loading")?.classList.add("is-hidden");msg("guest-login-message","Пока нет ответа от сервера. Проверяем соединение повторно…");} }finally{refreshBusy=false;}
+    refreshBusy=true;try{const result=await api("state",{guestName});if(!playbackTransitionBusy)render(result.state);}catch(e){if(!lastState){const overlay=$("startup-loading");if(overlay){overlay.classList.remove("is-hidden");const t=$("startup-loading-text");if(t)t.textContent="Не удалось загрузить очередь. Повторяем подключение…";}msg("guest-login-message","Пока нет ответа от сервера. Проверяем соединение повторно…");} }finally{refreshBusy=false;}
   }
   async function login(name){
     const result=await api("guestLogin",{name});guestName=result.name||name;localStorage.setItem(NAME_KEY,guestName);
@@ -96,7 +96,7 @@
       if(overlay&&loadingText){loadingText.textContent=`Добро пожаловать ${guestName}`;overlay.classList.remove("is-hidden");}
       showOnly("public-content");$("confirmed-guest-name").textContent=guestName;
       await refresh(true);
-      if(overlay){loadingText.textContent="Подключаемся к очереди…";overlay.classList.add("is-hidden");}
+      if(overlay&&lastState){loadingText.textContent="Подключаемся к очереди…";overlay.classList.add("is-hidden");}
     }
   }
   async function changeGuestName(){

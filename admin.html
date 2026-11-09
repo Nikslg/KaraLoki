@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#090914">
-  <title>KaraLoki v1.8.4 — Панель ведущего</title>
+  <title>KaraLoki v1.8.5 — Панель ведущего</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -48,20 +48,21 @@
           <button class="admin-tab" type="button" data-tab="users-tab">Пользователи <span id="pending-count" class="tab-count">0</span></button>
           <button class="admin-tab" type="button" data-tab="settings-tab">Настройки</button>
         </nav>
-        <div class="playback-controls-section">
-          <h2>Управление воспроизведением</h2>
-          <div class="control-grid">
-            <button id="pause-button" class="primary" type="button">Ⅱ Пауза</button>
-            <button id="skip-button" class="secondary" type="button">Пропустить ⏭</button>
-            <button id="event-mode-button" class="secondary" type="button">⏸ Режим: выкл.</button>
-          </div>
-          <p id="control-message" class="message" aria-live="polite"></p>
-        </div>
       </section>
 
       <div id="queue-tab" class="admin-tab-panel">
 
-        <section class="panel">
+        <section class="panel admin-request-workspace">
+          <div class="playback-controls-section">
+            <h2>Управление воспроизведением</h2>
+            <div class="control-grid">
+              <button id="pause-button" class="primary" type="button">Ⅱ Пауза</button>
+              <button id="skip-button" class="secondary" type="button">Пропустить ⏭</button>
+              <button id="event-mode-button" class="secondary" type="button">⏸ Режим: выкл.</button>
+            </div>
+            <p id="control-message" class="message" aria-live="polite"></p>
+          </div>
+          <div class="admin-request-section">
           <h2>Заказать песню</h2>
           <form id="admin-request-form">
             <div class="field-row">
@@ -74,6 +75,7 @@
             </div>
             <button class="primary" id="admin-request-button" type="submit">Добавить в очередь</button>
           </form>
+          </div>
         </section>
 
         <section class="panel">

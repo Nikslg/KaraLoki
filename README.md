@@ -1,4 +1,15 @@
-# KaraLoki v1.8.4 — очередь караоке и панель ведущего
+# KaraLoki v1.8.5 — очередь караоке и панель ведущего
+
+KaraLoki — веб-приложение для очереди песен. Сайт размещается на GitHub Pages, данные хранятся в Google Sheets, серверная логика работает через Google Apps Script.
+
+## Изменения v1.8.5
+
+- Playback actions (Пауза/Продолжить/Пропустить/Режим) update the Admin client immediately and are sent to Apps Script sequentially in click order, allowing rapid consecutive Pause/Resume actions.
+- Admin navigation remains in its own top panel. Playback controls are available only on the Queue tab and share one panel with the Admin song-request form. The Admin tab panels have consistent vertical gaps, matching the Guest-side panel spacing.
+- Admin tab panels use consistent vertical spacing, matching the Guest panel's card separation.
+- Guest account actions are ordered «Изменить имя» then «Выйти», with the exit action below the rename action.
+- Version labels and file descriptions updated to v1.8.5.
+
 
 KaraLoki — веб-приложение для очереди песен. Сайт размещается на GitHub Pages, данные хранятся в Google Sheets, серверная логика работает через Google Apps Script.
 
