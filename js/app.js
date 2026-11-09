@@ -91,6 +91,7 @@
     const code = $("room-code").value.trim();
     if (!/^\d{4}$/.test(code)) return msg("room-message", "Введите код из четырёх цифр.", true);
     $("room-button").disabled = true;
+    msg("room-message", "Проверяем код комнаты... ожидайте");
     try {
       await api("verifyRoom", { roomPassword: code });
       localStorage.setItem(ROOM_KEY, code); $("room-code").value = ""; msg("room-message", "");
@@ -104,6 +105,8 @@
     const song = $("song-input").value.trim(), artist = $("artist-input").value.trim(), requester = $("requester-input").value.trim();
     if (!song || !requester) return msg("request-message", "Укажите название песни и своё имя.", true);
     busy = true; $("request-button").disabled = true;
+    $("request-button").classList.add("is-loading");
+    msg("request-message", "Добавляем в очередь... ожидайте");
     try {
       localStorage.setItem(NAME_KEY, requester);
       const result = await api("add", { song, artist, requester, roomPassword: localStorage.getItem(ROOM_KEY) || "" });
@@ -112,12 +115,12 @@
       cooldownUntil = Date.now() + 15 * 60 * 1000;
       await refresh();
     } catch (e) { msg("request-message", e.message, true); await refresh(); }
-    finally { busy = false; updateCooldown(); }
+    finally { busy = false; $("request-button").classList.remove("is-loading"); updateCooldown(); }
   });
 
   setInterval(() => {
     if (countdownTarget !== null && !countdownPaused) $("countdown").textContent = time(Math.ceil((countdownTarget - Date.now()) / 1000));
     updateCooldown();
   }, 1000);
-  refresh(); setInterval(refresh, Math.max(5000, Number(cfg.REFRESH_MS) || 7000));
+  refresh(); setInterval(refresh, Math.max(1000, Number(cfg.REFRESH_MS) || 5000));
 })();

@@ -67,3 +67,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
  .admin-queue-item{gap:7px}.queue-actions{gap:3px}.icon-button{width:31px;height:34px}
  .room-code{font-size:1.65rem}
 }
+
+.visibility-toggle{display:flex;grid-template-columns:none;flex-direction:row;align-items:center;gap:9px;cursor:pointer;font-size:.84rem;font-weight:550}
+.visibility-toggle input{width:17px;height:17px;min-width:17px;margin:0;accent-color:var(--accent);cursor:pointer}
+button.is-loading{opacity:.78;cursor:progress}

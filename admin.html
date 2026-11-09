@@ -25,6 +25,10 @@
         <label for="owner-name">Данные для входа
           <input id="owner-name" type="password" maxlength="64" autocomplete="current-password" placeholder="Введите данные для входа" required>
         </label>
+        <label class="visibility-toggle">
+          <input id="show-owner-name" type="checkbox">
+          <span>Показать вводимые данные</span>
+        </label>
         <button class="primary" type="submit" id="login-button">Войти</button>
         <p id="login-message" class="message" aria-live="polite"></p>
       </form>

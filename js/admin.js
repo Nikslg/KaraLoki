@@ -73,28 +73,65 @@
     catch (e) { if (!lastState) message("control-message", e.message, true); }
     finally { refreshBusy = false; }
   }
+  const pendingText = {
+    skip:"Пропускаем песню... ожидайте",
+    pause:"Приостанавливаем воспроизведение... ожидайте",
+    resume:"Возобновляем воспроизведение... ожидайте",
+    play:"Запускаем выбранную песню... ожидайте",
+    clearQueue:"Очищаем очередь... ожидайте",
+    add:"Добавляем песню в очередь... ожидайте",
+    remove:"Удаляем песню... ожидайте",
+    move:"Обновляем порядок очереди... ожидайте"
+  };
+  const successText = {
+    skip:"Песня пропущена.",
+    pause:"Воспроизведение приостановлено.",
+    resume:"Воспроизведение продолжено.",
+    play:"Песня запущена.",
+    clearQueue:"Очередь очищена. История сохранена.",
+    add:"Песня добавлена в очередь.",
+    remove:"Песня удалена из очереди.",
+    move:"Порядок очереди обновлён."
+  };
   async function adminAction(action, params = {}) {
-    if (busy) return; busy = true;
+    if (busy) return;
+    busy = true;
+    const buttons = Array.from($("admin-content").querySelectorAll("button"));
+    buttons.forEach(b => { b.disabled = true; });
+    message("control-message", pendingText[action] || "Выполняем действие... ожидайте");
     try {
-      await api(action, { ownerName, ...params }); await refresh();
-      const texts = {skip:"Текущая песня пропущена.",pause:"Воспроизведение приостановлено.",resume:"Воспроизведение продолжено.",play:"Выбранная песня запущена.",clearQueue:"Очередь очищена.",add:"Песня добавлена."};
-      message("control-message", texts[action] || "Изменения сохранены.");
-    } catch (e) { message("control-message", e.message, true); }
-    finally { busy = false; }
+      await api(action, { ownerName, ...params });
+      await refresh();
+      message("control-message", successText[action] || "Изменения сохранены.");
+    } catch (e) {
+      message("control-message", e.message, true);
+    } finally {
+      busy = false;
+      buttons.forEach(b => { if (b.isConnected) b.disabled = false; });
+      if (lastState) $("pause-button").textContent = lastState.paused ? "▶ Продолжить" : "Ⅱ Пауза";
+    }
   }
   async function queueAction(action, songId) {
     if (action === "remove" && !confirm("Удалить эту песню из очереди?")) return;
     await adminAction(action, { songId });
   }
 
+  $("show-owner-name").addEventListener("change", () => {
+    $("owner-name").type = $("show-owner-name").checked ? "text" : "password";
+  });
+
   $("admin-login-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const entered = $("owner-name").value.trim();
+    $("login-button").disabled = true;
+    $("login-button").classList.add("is-loading");
+    message("login-message", "Проверяем данные для входа... ожидайте");
     try {
       await api("adminCheck", { ownerName: entered });
       ownerName = OWNER_NAME; sessionStorage.setItem(ADMIN_KEY, "1"); unlocked(true);
       $("owner-name").value = ""; message("control-message", "Панель управления открыта."); await refresh();
     } catch (_) { message("login-message", "Не удалось выполнить вход. Проверьте данные и попробуйте снова.", true); }
+    finally { $("login-button").disabled = false; $("login-button").classList.remove("is-loading"); }
   });
   $("lock-button").addEventListener("click", () => {
     ownerName = ""; sessionStorage.removeItem(ADMIN_KEY); lastState = null; unlocked(false); $("owner-name").value = ""; message("login-message", "");
@@ -103,8 +140,11 @@
   $("pause-button").addEventListener("click", () => adminAction(lastState?.paused ? "resume" : "pause"));
   $("clear-queue-button").addEventListener("click", () => { if (confirm("Очистить все ожидающие песни? История в Google Sheets останется без изменений.")) adminAction("clearQueue"); });
   $("copy-room-code").addEventListener("click", async () => {
+    message("control-message", "Копируем код... ожидайте");
+    $("copy-room-code").disabled = true;
     try { await navigator.clipboard.writeText($("daily-room-code").textContent); message("control-message", "Код скопирован."); }
     catch (_) { message("control-message", "Не удалось скопировать код. Выделите его вручную.", true); }
+    finally { $("copy-room-code").disabled = false; }
   });
   $("admin-request-form").addEventListener("submit", async (event) => {
     event.preventDefault(); const song = $("admin-song-input").value.trim(), artist = $("admin-artist-input").value.trim();

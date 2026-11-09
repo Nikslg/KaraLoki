@@ -80,11 +80,6 @@ function addSong_(p) {
   return withLock_(()=>{
     const props=PropertiesService.getScriptProperties();
     if (!admin) {
-      const nameKey="GUEST_NAME_"+deviceId;
-      const reservedName=String(props.getProperty(nameKey)||"");
-      if (reservedName && reservedName.toLowerCase()!==requester.toLowerCase()) {
-        throw new Error("Имя для этого устройства уже закреплено: "+reservedName+".");
-      }
       const last=Number(props.getProperty("COOLDOWN_"+deviceId)||0);
       const remaining=Math.ceil((last+COOLDOWN_SECONDS*1000-Date.now())/1000);
       if (remaining>0) throw new Error("Пожалуйста подождите перед заказом следующей песни: "+formatSeconds_(remaining));
@@ -93,10 +88,7 @@ function addSong_(p) {
     if (!admin && rows.some(r=>String(r.deviceId)===deviceId && ["Waiting","Playing"].includes(String(r.status)))) throw new Error("У вас уже есть активный заказ. Дождитесь его исполнения.");
     const id=Utilities.getUuid(), pos=rows.filter(r=>r.status==="Waiting").length+1;
     sh.appendRow([id,song,artist,requester,deviceId,"Waiting",new Date(),pos]);
-    if (!admin) {
-      props.setProperty("GUEST_NAME_"+deviceId,requester);
-      props.setProperty("COOLDOWN_"+deviceId,String(Date.now()));
-    }
+    if (!admin) props.setProperty("COOLDOWN_"+deviceId,String(Date.now()));
     ensureCurrent_();
     return {ok:true,message:"Песня добавлена в очередь.",cooldownSeconds:admin?0:COOLDOWN_SECONDS};
   });
