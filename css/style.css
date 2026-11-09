@@ -209,3 +209,19 @@ body{
 .drag-handle:active{cursor:grabbing}
 .drag-armed .drag-handle{background:rgba(40,220,190,.18);border-color:#61f0d0;box-shadow:0 0 12px rgba(60,240,210,.3)}
 .drag-armed{outline:1px dashed rgba(97,240,208,.55);outline-offset:2px}
+
+
+/* v1.8.1 queue controls and user-list scrolling */
+.queue-actions .icon-button{width:34px;height:34px;min-width:34px}
+.queue-actions .icon-button:disabled{opacity:.28}
+.queue-footer-actions{display:flex;justify-content:flex-end;align-items:center;gap:9px;margin-top:14px}
+.shuffle-icon-button{display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(213,139,255,.48);background:rgba(130,70,170,.18);color:#e2b5ff}
+.shuffle-icon-button svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.shuffle-icon-button:disabled{opacity:.35}
+#confirmed-users-list{max-height:min(48vh,390px);overflow-y:auto;overscroll-behavior:contain;padding-right:5px;scrollbar-width:thin;scrollbar-color:rgba(178,111,255,.62) rgba(14,16,29,.55)}
+#confirmed-users-list::-webkit-scrollbar{width:8px}
+#confirmed-users-list::-webkit-scrollbar-track{background:rgba(14,16,29,.55);border-radius:10px}
+#confirmed-users-list::-webkit-scrollbar-thumb{background:rgba(178,111,255,.62);border-radius:10px}
+#queue-list.is-reordering{user-select:none}
+#queue-list .upcoming[draggable="true"]{cursor:grabbing}
+@media(max-width:520px){.queue-actions .icon-button{width:30px;height:32px;min-width:30px}.queue-actions{gap:2px}.queue-footer-actions{gap:7px}}

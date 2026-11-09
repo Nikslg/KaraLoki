@@ -31,14 +31,37 @@
     });
   }
 
+  let queueDragActive=false,activeDraggedElement=null;
   function renderCombinedQueue(state){
-    const list=$("queue-list");list.replaceChildren();const entries=[...(state.previous||[]).map(x=>({item:x,kind:"previous"})),...(state.current?[{item:state.current,kind:"current"}]:[]),...(state.queue||[]).map((x,i)=>({item:x,kind:"upcoming",index:i}))];
+    const list=$("queue-list");list.replaceChildren();
+    const entries=[...(state.previous||[]).map(x=>({item:x,kind:"previous"})),...(state.current?[{item:state.current,kind:"current"}]:[]),...(state.queue||[]).map((x,i)=>({item:x,kind:"upcoming",index:i}))];
     if(!entries.length){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пуста.";list.append(li);return;}
-    let dragIds=null;
-    entries.forEach(({item,kind,index})=>{const li=document.createElement("li");li.className="queue-item admin-queue-item public-queue-item "+kind;li.dataset.songId=item.id;if(kind==="upcoming"&&normalizeName(item.requester)===normalizeName(OWNER_NAME))li.classList.add("my-request");const num=document.createElement("span");num.className="queue-number";num.textContent=kind==="upcoming"?String(index+1).padStart(2,"0"):kind==="current"?"▶":"";const body=document.createElement("div");body.className="queue-item-body";const song=document.createElement("div");song.className="queue-song";song.textContent=label(item);const requester=document.createElement("div");requester.className="queue-requester";const stamp=item.requestedAt?new Date(Number(item.requestedAt)).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}):"";requester.textContent=`${item.requester||"—"}${stamp?" · Заказ: "+stamp:""}`;body.append(song,requester);li.append(num,body);
+    entries.forEach(({item,kind,index})=>{
+      const li=document.createElement("li");li.className="queue-item admin-queue-item public-queue-item "+kind;li.dataset.songId=item.id;
+      if(kind==="upcoming"&&normalizeName(item.requester)===normalizeName(OWNER_NAME))li.classList.add("my-request");
+      const num=document.createElement("span");num.className="queue-number";num.textContent=kind==="upcoming"?String(index+1).padStart(2,"0"):kind==="current"?"▶":kind==="previous"?"◷":"";
+      const body=document.createElement("div");body.className="queue-item-body";
+      const song=document.createElement("div");song.className="queue-song";song.textContent=label(item);
+      const requester=document.createElement("div");requester.className="queue-requester";
+      const stamp=item.requestedAt?new Date(Number(item.requestedAt)).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}):"";
+      requester.textContent=`${item.requester||"—"}${stamp?" · Заказ: "+stamp:""}`;body.append(song,requester);li.append(num,body);
       if(kind==="current"){const marker=document.createElement("span");marker.className="current-queue-marker";marker.textContent="СЕЙЧАС ИГРАЕТ";body.prepend(marker);}
-      if(kind==="upcoming"){const actions=document.createElement("div");actions.className="queue-actions";actions.append(makeButton("▶","Воспроизвести сейчас",()=>adminAction("play",{songId:item.id})));if(index>=3){const drag=makeButton("","Включить перемещение этой песни",()=>{li.draggable=!li.draggable;li.classList.toggle("drag-armed",li.draggable);drag.title=li.draggable?"Перетащите песню на новое место":"Включить перемещение этой песни";});drag.classList.add("drag-handle");drag.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2v20M2 12h20M12 2l-3 3m3-3 3 3M12 22l-3-3m3 3 3-3M2 12l3-3m-3 3 3 3m16-3-3-3m3 3-3 3"/></svg>';actions.append(drag);}actions.append(makeButton("×","Удалить из очереди",()=>queueAction("remove",item.id),"remove-button"));li.append(actions);if(index>=3){li.addEventListener("dragstart",e=>{if(!li.draggable){e.preventDefault();return;}dragIds=Array.from(list.querySelectorAll("li.upcoming[data-song-id]")).slice(3).map(x=>x.dataset.songId);e.dataTransfer.setData("text/plain",item.id);e.dataTransfer.effectAllowed="move";});li.addEventListener("dragover",e=>{if(!dragIds||index<3)return;e.preventDefault();const moving=list.querySelector(`[data-song-id="${e.dataTransfer.getData("text/plain")}"]`);if(moving&&moving!==li)list.insertBefore(moving,li);});li.addEventListener("drop",e=>{e.preventDefault();if(!dragIds)return;const ids=Array.from(list.querySelectorAll("li.upcoming[data-song-id]")).slice(3).map(x=>x.dataset.songId);dragIds=null;adminAction("reorder",{ids:JSON.stringify(ids)});});li.addEventListener("dragend",()=>{dragIds=null;li.draggable=false;li.classList.remove("drag-armed");});}}
-      list.append(li);});
+      if(kind==="upcoming"){
+        const actions=document.createElement("div");actions.className="queue-actions";
+        actions.append(makeButton("▶","Воспроизвести сейчас",()=>adminAction("play",{songId:item.id})));
+        const up=makeButton("↑","Переместить выше",()=>adminAction("move",{songId:item.id,direction:"up"}));up.disabled=index===0;
+        const down=makeButton("↓","Переместить ниже",()=>adminAction("move",{songId:item.id,direction:"down"}));down.disabled=index===(state.queue||[]).length-1;
+        actions.append(up,down);
+        const drag=makeButton("","Включить перемещение этой песни",()=>{li.draggable=!li.draggable;li.classList.toggle("drag-armed",li.draggable);drag.title=li.draggable?"Перетащите песню на новое место":"Включить перемещение этой песни";});
+        drag.classList.add("drag-handle");drag.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2v20M2 12h20M12 2l-3 3m3-3 3 3M12 22l-3-3m3 3 3-3M2 12l3-3m-3 3 3 3m16-3-3-3m3 3-3 3"/></svg>';actions.append(drag);
+        actions.append(makeButton("×","Удалить из очереди",()=>queueAction("remove",item.id),"remove-button"));li.append(actions);
+        li.addEventListener("dragstart",e=>{if(!li.draggable){e.preventDefault();return;}queueDragActive=true;activeDraggedElement=li;list.classList.add("is-reordering");e.dataTransfer.setData("text/plain",item.id);e.dataTransfer.effectAllowed="move";});
+        li.addEventListener("dragover",e=>{if(!queueDragActive||!e.dataTransfer.types.includes("text/plain"))return;e.preventDefault();const moving=activeDraggedElement;if(!moving||moving===li)return;const rect=li.getBoundingClientRect();const after=e.clientY>rect.top+rect.height/2;list.insertBefore(moving,after?li.nextSibling:li);});
+        li.addEventListener("drop",e=>{e.preventDefault();if(!queueDragActive)return;const ids=Array.from(list.querySelectorAll("li.upcoming[data-song-id]")).map(x=>x.dataset.songId);queueDragActive=false;activeDraggedElement=null;list.classList.remove("is-reordering");list.querySelectorAll(".drag-armed").forEach(x=>{x.draggable=false;x.classList.remove("drag-armed")});adminAction("reorder",{ids:JSON.stringify(ids)});});
+        li.addEventListener("dragend",()=>{queueDragActive=false;activeDraggedElement=null;list.classList.remove("is-reordering");li.draggable=false;li.classList.remove("drag-armed");});
+      }
+      list.append(li);
+    });
   }
   function historyStatus(s){return({Completed:"Исполнена",Skipped:"Пропущена",Interrupted:"Прервана",Removed:"Удалена",Replayed:"Повтор"})[s]||s;}
   function renderPending(users){
@@ -82,9 +105,9 @@
     renderCombinedQueue(state);renderSongList("history-list",state.history||[],"history");
     const settings=state.settings||{};$("autoplay-setting").checked=settings.autoplay!==false;$("song-duration-setting").value=settings.songSeconds||300;$("cooldown-setting").value=settings.cooldownSeconds??900;
     $("event-mode-button").textContent=state.eventMode?"▶ Режим: вкл.":"⏸ Режим: выкл.";$("event-mode-button").classList.toggle("danger",!!state.eventMode);
-    $("queue-count").textContent=`${(state.queue||[]).length} песен`;$("shuffle-button").disabled=(state.queue||[]).length<5;$("history-count").textContent=String((state.history||[]).length);renderUsers(state.users||[]);
+    $("queue-count").textContent=`${(state.queue||[]).length} песен`;$("shuffle-button").disabled=Math.max(0,(state.queue||[]).length-3)<2;$("history-count").textContent=String((state.history||[]).length);renderUsers(state.users||[]);
   }
-  async function refresh(force=false){if(!ownerName)return;if(refreshBusy){if(!force)return;while(refreshBusy)await new Promise(resolve=>setTimeout(resolve,40));}refreshBusy=true;try{const result=await api("state",{ownerName});render(result.state);}catch(e){if(!lastState)message("control-message",e.message,true);}finally{refreshBusy=false;}}
+  async function refresh(force=false){if(!ownerName||queueDragActive)return;if(refreshBusy){if(!force)return;while(refreshBusy)await new Promise(resolve=>setTimeout(resolve,40));}refreshBusy=true;try{const result=await api("state",{ownerName});if(!queueDragActive)render(result.state);}catch(e){if(!lastState)message("control-message",e.message,true);}finally{refreshBusy=false;}}
   const pendingText={skip:"Пропускаем песню... ожидайте",pause:"Приостанавливаем воспроизведение... ожидайте",resume:"Возобновляем воспроизведение... ожидайте",play:"Запускаем выбранную песню... ожидайте",clearQueue:"Очищаем очередь... ожидайте",add:"Добавляем песню в очередь... ожидайте",remove:"Удаляем песню... ожидайте",move:"Обновляем порядок очереди... ожидайте",approveUser:"Подтверждаем пользователя... ожидайте",denyUser:"Отклоняем пользователя... ожидайте",liftCooldown:"Снимаем ожидание... ожидайте",banUser:"Применяем временную блокировку... ожидайте",returnToPending:"Возвращаем пользователя на подтверждение... ожидайте",hideHistory:"Скрываем запись истории... ожидайте",deleteHistory:"Удаляем запись истории... ожидайте"};
   const successText={clearHistory:"История отмечена как очищенная. Записи сохранены в таблице.",shuffle:"Очередь перемешана после первых трёх песен.",reorder:"Порядок очереди обновлён.",saveSettings:"Настройки сохранены.",setEventMode:"Режим мероприятия обновлён.",skip:"Песня пропущена.",pause:"Воспроизведение приостановлено.",resume:"Воспроизведение продолжено.",play:"Песня запущена.",clearQueue:"Очередь очищена. Ожидание затронутых гостей снято.",add:"Песня добавлена в очередь.",remove:"Песня удалена, ожидание заказчика снято.",move:"Порядок очереди обновлён.",approveUser:"Пользователь подтверждён.",denyUser:"Заявка отклонена.",liftCooldown:"Ожидание снято.",banUser:"Заказы заблокированы на 30 минут.",returnToPending:"Пользователь возвращён в список ожидающих подтверждения.",hideHistory:"Запись скрыта.",deleteHistory:"Запись удалена из истории."};
   function actionMessageId(action){if(["pause","resume","skip"].includes(action))return "control-message";if(["approveUser","denyUser","liftCooldown","banUser","returnToPending"].includes(action))return "users-message";return "queue-message";}
@@ -93,7 +116,7 @@
     buttons.forEach(b=>b.disabled=true);message(target,pendingText[action]||"Выполняем действие...");
     try{await api(action,{ownerName,...params});await refresh(true);const success=action==="play"&&params.source==="history"?"Песня добавлена следующей после текущей.":(successText[action]||"Изменения сохранены.");message(target,success);}
     catch(e){message(target,e.message,true);}
-    finally{busy=false;buttons.forEach(b=>{if(b.isConnected)b.disabled=false;});if(lastState)$("pause-button").textContent=lastState.paused?"▶ Продолжить":"Ⅱ Пауза";}
+    finally{busy=false;buttons.forEach(b=>{if(b.isConnected)b.disabled=false;});if(lastState){render(lastState);$("pause-button").textContent=lastState.paused?"▶ Продолжить":"Ⅱ Пауза";}}
   }
   async function queueAction(action,songId){if(action==="remove"&&!confirm("Удалить эту песню из очереди? Ожидание заказчика будет снято."))return;await adminAction(action,{songId});}
   function switchTab(tabId){document.querySelectorAll(".admin-tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===tabId));document.querySelectorAll(".admin-tab-panel").forEach(p=>p.classList.toggle("hidden",p.id!==tabId));}
