@@ -71,3 +71,33 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .visibility-toggle{display:flex;grid-template-columns:none;flex-direction:row;align-items:center;gap:9px;cursor:pointer;font-size:.84rem;font-weight:550}
 .visibility-toggle input{width:17px;height:17px;min-width:17px;margin:0;accent-color:var(--accent);cursor:pointer}
 button.is-loading{opacity:.78;cursor:progress}
+
+/* v1.4 guest approval and admin tabs */
+.notice{padding:12px 14px;border-radius:10px;font-size:.9rem;line-height:1.45}
+.notice-wait{background:#332b1b;border:1px solid #806b3b;color:#f4d99a}
+.notice-ban{background:#3b2027;border:1px solid #82404c;color:#ffd7dc}
+.admin-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.admin-tab{background:var(--panel2);color:var(--muted);border:1px solid var(--border);min-height:48px}
+.admin-tab.active{background:var(--accent);color:#06241e;border-color:var(--accent);}
+.tab-count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;margin-left:5px;padding:0 6px;border-radius:999px;background:rgba(0,0,0,.18);font-size:.75rem}
+.admin-tab-panel{display:grid;gap:16px}
+.user-list{list-style:none;padding:0;margin:14px 0 0;display:grid;gap:10px}
+.user-entry,.confirmed-entry{padding:11px 12px;background:var(--panel2);border-radius:11px;min-width:0}
+.user-entry{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.user-name{display:block;overflow-wrap:anywhere}
+.user-actions{display:flex;align-items:center;gap:7px;flex-shrink:0}
+.icon-button.square-action{width:40px;height:40px;min-width:40px;padding:0;border-radius:5px;border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:1.15rem;line-height:1}
+.icon-button.allow-square{background:#173f35;color:#75e0bb;border-color:#28775f}
+.icon-button.deny-square{background:#48252d;color:#ff9ca8;border-color:#85414d}
+.icon-button.ban-square{background:#48252d;color:#ff9ca8;border-color:#85414d;font-size:1.1rem}
+.confirmed-entry .user-name{margin-bottom:8px}
+.cooldown-row{display:flex;align-items:center;gap:9px;min-width:0}
+.cooldown-label{color:var(--muted);font-size:.78rem;white-space:nowrap}
+.cooldown-value{font-size:.88rem;font-weight:750;font-variant-numeric:tabular-nums;min-width:54px}
+.cooldown-spacer{height:1px;flex:1;border-bottom:1px solid var(--border);min-width:8px}
+@media(max-width:520px){
+ .admin-tabs{gap:6px}.admin-tab{padding:10px}
+ .user-entry,.confirmed-entry{padding:10px}
+ .cooldown-row{gap:6px}.cooldown-label{font-size:.72rem}.cooldown-value{min-width:48px;font-size:.82rem}
+ .icon-button.square-action{width:36px;height:36px;min-width:36px}
+}

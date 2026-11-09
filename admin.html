@@ -9,7 +9,7 @@
 </head>
 <body>
   <header class="site-header">
-    <div class="brand">KaraLoki <span class="admin-brand">HOST</span></div>
+    <div class="brand">KaraLoki <span class="admin-brand">v1.4 · HOST</span></div>
     <div class="now-playing">
       <div class="eyebrow">СЕЙЧАС ИСПОЛНЯЕТСЯ</div>
       <div id="current-song" class="current-title">Пока ничего не играет</div>
@@ -25,60 +25,65 @@
         <label for="owner-name">Данные для входа
           <input id="owner-name" type="password" maxlength="64" autocomplete="current-password" placeholder="Введите данные для входа" required>
         </label>
-        <label class="visibility-toggle">
-          <input id="show-owner-name" type="checkbox">
-          <span>Показать вводимые данные</span>
-        </label>
+        <label class="visibility-toggle"><input id="show-owner-name" type="checkbox"><span>Показать вводимые данные</span></label>
         <button class="primary" type="submit" id="login-button">Войти</button>
         <p id="login-message" class="message" aria-live="polite"></p>
       </form>
     </section>
 
     <div id="admin-content" class="hidden">
-      <section class="panel">
-        <div class="section-heading"><h2>Код комнаты</h2><button id="lock-button" class="quiet compact" type="button">Заблокировать</button></div>
-        <div class="room-code-row"><strong id="daily-room-code" class="room-code">----</strong><button id="copy-room-code" class="secondary compact" type="button">Копировать</button></div>
-        <p class="small muted">Код действует до 18:00 по московскому времени. После этого автоматически создаётся новый.</p>
-      </section>
+      <nav class="admin-tabs" aria-label="Разделы панели">
+        <button type="button" class="admin-tab active" data-tab="queue-tab">Queue</button>
+        <button type="button" class="admin-tab" data-tab="users-tab">Users <span id="pending-count" class="tab-count">0</span></button>
+      </nav>
 
-      <section class="panel">
-        <h2>Управление воспроизведением</h2>
-        <div class="control-grid">
-          <button id="pause-button" class="primary" type="button">Ⅱ Пауза</button>
-          <button id="skip-button" class="secondary" type="button">Пропустить ⏭</button>
-        </div>
-        <p id="control-message" class="message" aria-live="polite"></p>
-      </section>
-
-      <section class="panel">
-        <h2>Заказать песню от ведущего</h2>
-        <form id="admin-request-form">
-          <div class="field-row">
-            <label>Название песни
-              <input id="admin-song-input" maxlength="140" placeholder="Название песни" required>
-            </label>
-            <label>Исполнитель
-              <input id="admin-artist-input" maxlength="100" placeholder="Исполнитель (необязательно)">
-            </label>
+      <section id="queue-tab" class="admin-tab-panel">
+        <section class="panel">
+          <div class="section-heading"><h2>Управление воспроизведением</h2><button id="lock-button" class="quiet compact" type="button">Выйти</button></div>
+          <div class="control-grid">
+            <button id="pause-button" class="primary" type="button">Ⅱ Пауза</button>
+            <button id="skip-button" class="secondary" type="button">Пропустить ⏭</button>
           </div>
-          <label>Заказчик
-            <input value="RadioLoki" readonly>
-          </label>
-          <button class="primary" id="admin-request-button" type="submit">Добавить в очередь</button>
-        </form>
+          <p id="control-message" class="message" aria-live="polite"></p>
+        </section>
+
+        <section class="panel">
+          <h2>Заказать песню от ведущего</h2>
+          <form id="admin-request-form">
+            <div class="field-row">
+              <label>Название песни<input id="admin-song-input" maxlength="140" placeholder="Название песни" required></label>
+              <label>Исполнитель<input id="admin-artist-input" maxlength="100" placeholder="Исполнитель (необязательно)"></label>
+            </div>
+            <label>Заказчик<input value="RadioLoki" readonly></label>
+            <button class="primary" id="admin-request-button" type="submit">Добавить в очередь</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading"><h2>Очередь</h2><span id="queue-count" class="count-pill">0 песен</span></div>
+          <ol id="queue-list" class="queue-list"><li class="empty">Очередь пуста.</li></ol>
+          <div class="danger-row"><button id="clear-queue-button" class="danger" type="button">Очистить очередь</button></div>
+          <p class="small muted">Очистка удаляет ожидающие песни из активной очереди и снимает cooldown у затронутых гостей. История сохраняется.</p>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading"><h2>История песен</h2><span id="history-count" class="count-pill">0</span></div>
+          <ol id="history-list" class="queue-list history-list"><li class="empty">История пока пуста.</li></ol>
+          <p class="small muted">▶ — запустить. Скрыть убирает запись из списка, удалить удаляет её из листа History.</p>
+        </section>
       </section>
 
-      <section class="panel">
-        <div class="section-heading"><h2>Очередь</h2><span id="queue-count" class="count-pill">0 песен</span></div>
-        <ol id="queue-list" class="queue-list"><li class="empty">Очередь пуста.</li></ol>
-        <div class="danger-row"><button id="clear-queue-button" class="danger" type="button">Очистить очередь</button></div>
-        <p class="small muted">Кнопка очистки удаляет из активной очереди только ожидающие песни. Лист History в Google Sheets сохраняется.</p>
-      </section>
-
-      <section class="panel">
-        <div class="section-heading"><h2>История песен</h2><span id="history-count" class="count-pill">0</span></div>
-        <ol id="history-list" class="queue-list history-list"><li class="empty">История пока пуста.</li></ol>
-        <p class="small muted">Нажмите ▶, чтобы немедленно запустить песню из истории.</p>
+      <section id="users-tab" class="admin-tab-panel hidden">
+        <section class="panel">
+          <div class="section-heading"><h2>Ожидают подтверждения</h2><span id="pending-list-count" class="count-pill">0</span></div>
+          <ul id="pending-users-list" class="user-list"><li class="empty">Нет ожидающих пользователей.</li></ul>
+        </section>
+        <section class="panel">
+          <div class="section-heading"><h2>Подтверждённые пользователи</h2><span id="confirmed-count" class="count-pill">0</span></div>
+          <ul id="confirmed-users-list" class="user-list"><li class="empty">Пока нет подтверждённых пользователей.</li></ul>
+          <p class="small muted">Cooldown действует 15 минут с момента заказа. 🔨 блокирует новые заказы на 30 минут.</p>
+        </section>
+        <p id="users-message" class="message" aria-live="polite"></p>
       </section>
     </div>
     <footer class="footer muted"><a href="index.html">← К публичной очереди</a></footer>
