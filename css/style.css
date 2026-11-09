@@ -47,8 +47,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .cooldown strong{display:block;font-size:1.35rem;font-variant-numeric:tabular-nums;margin-top:4px}
 .admin-brand{display:inline-block;vertical-align:middle;margin-left:6px;padding:4px 7px;border:1px solid var(--border);border-radius:7px;color:var(--muted);font-size:.58rem;letter-spacing:.12em}
 .admin-page{max-width:900px}
-.control-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
-.control-grid button{min-height:54px;font-size:1rem}
+.control-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:16px}
+.control-grid button{min-height:54px;padding:10px 8px;font-size:.88rem;line-height:1.2;white-space:normal}
 .compact{padding:7px 11px;font-size:.8rem}
 .admin-queue-item{align-items:center}
 .queue-item-body{min-width:0;flex:1}
@@ -63,7 +63,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
  .site-header{padding:12px 14px}.brand{font-size:1.7rem}.current-title{font-size:1rem}
  .page{width:min(100% - 20px,900px);margin-top:12px;gap:12px}.panel{padding:15px;border-radius:13px}
  .field-row{gap:7px}.field-row input{padding:11px 9px;font-size:.9rem}
- .control-grid{gap:7px}.control-grid button{padding:11px 8px;font-size:.9rem}
+ .control-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.control-grid button{min-height:48px;padding:9px 4px;font-size:.76rem;line-height:1.15}
  .admin-queue-item{gap:7px}.queue-actions{gap:3px}.icon-button{width:31px;height:34px}
  .room-code{font-size:1.65rem}
 }
@@ -193,3 +193,12 @@ body{
 .loading-spinner{width:34px;height:34px;border:3px solid rgba(255,255,255,.18);border-top-color:#dc8cff;border-right-color:#61e6c0;border-radius:50%;animation:kl-spin .8s linear infinite}
 .loading-text{font-size:.95rem;color:#c9bed8}
 @keyframes kl-spin{to{transform:rotate(360deg)}}
+
+
+/* v1.7.1: keep playback controls aligned in one row */
+.control-grid{grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch}
+.control-grid button{min-width:0;min-height:58px;padding:10px 9px;font-size:clamp(.72rem,1.45vw,.96rem);line-height:1.2;white-space:normal;overflow-wrap:anywhere}
+@media(max-width:520px){
+ .control-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+ .control-grid button{min-height:62px;padding:8px 5px;font-size:clamp(.65rem,2.5vw,.82rem)}
+}

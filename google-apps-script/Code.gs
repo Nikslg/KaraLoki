@@ -1,10 +1,10 @@
 /**
- * KaraLoki v1.6 — Google Apps Script backend.
+ * KaraLoki v1.7.5 — Google Apps Script backend.
  * Guest identity is the approved display name (case-insensitive matching).
  * Device IDs and room codes are no longer used. Google Sheets remains the database.
  * RadioLoki is a shared-name convenience gate, not secure authentication.
  */
-const QUEUE_HEADERS = ["id","song","artist","requester","status","createdAt","position","requesterToken"];
+const QUEUE_HEADERS = ["id","song","artist","requester","status","createdAt","position"];
 const PLAYBACK_HEADERS = ["key","value"];
 const HISTORY_HEADERS = ["id","song","artist","requester","result","playedAt","hidden","entryId","cleared"];
 const USER_HEADERS = ["name","nameKey","status","cooldownUntil","bannedUntil","createdAt","updatedAt"];
@@ -19,8 +19,8 @@ function setupKaraLoki() {
   const props = PropertiesService.getScriptProperties();
   if (!props.getProperty("SPREADSHEET_ID")) throw new Error("Set SPREADSHEET_ID in Project Settings > Script properties first.");
   const ss = SpreadsheetApp.openById(props.getProperty("SPREADSHEET_ID"));
-  removeLegacyDeviceIdColumn_(ss, "Queue");
-  removeLegacyDeviceIdColumn_(ss, "History");
+  removeLegacyIdentityColumns_(ss, "Queue");
+  removeLegacyIdentityColumns_(ss, "History");
   ensureSheet_(ss, "Queue", QUEUE_HEADERS);
   ensureSheet_(ss, "Playback", PLAYBACK_HEADERS);
   ensureSheet_(ss, "History", HISTORY_HEADERS);
@@ -125,8 +125,7 @@ function addSong_(p) {
     const sh = getSS_().getSheetByName("Queue"), rows = getRows_(sh);
     if (!admin && rows.some(r => nameKey_(r.requester) === key && ["Waiting","Playing"].includes(String(r.status)))) throw new Error("У вас уже есть активный заказ. Дождитесь его исполнения.");
     const id = Utilities.getUuid(), pos = rows.filter(r => r.status === "Waiting").length + 1;
-    const token = clean_(p.requesterToken,100);
-    sh.appendRow([id,song,artist,requester,"Waiting",new Date(),pos,token]);
+    sh.appendRow([id,song,artist,requester,"Waiting",new Date(),pos]);
     if (!admin) updateUser_(key,{cooldownUntil:now + getSettings_().cooldownSeconds*1000,updatedAt:new Date()});
     ensureCurrent_();
     return {ok:true,message:"Песня добавлена в очередь.",cooldownSeconds:admin?0:getSettings_().cooldownSeconds};
@@ -150,7 +149,7 @@ function stateWhileLocked_(admin, guestName) {
   const recent = playedHistory.slice(-3).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
   const previous = playedHistory.slice(-2).map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
   const settings=getSettings_();
-  const out = {current:current?publicSong_(current):null,queue:queue.map((q)=>{const r=rows.find(x=>x.id===q.id);return {...q,requestedAt:r?r.createdAt:null,requesterToken:r?r.requesterToken:""};}),history,recent,previous,paused:String(pb.paused)==="true",remainingSeconds:current?remaining:null,eventMode:settings.eventMode,settings};
+  const out = {current:current?publicSong_(current):null,queue,history,recent,previous,paused:String(pb.paused)==="true",remainingSeconds:current?remaining:null,eventMode:settings.eventMode,settings};
   if (admin) {
     out.users = getRows_(ss.getSheetByName("Users")).map(user => ({name:user.name,status:user.status,cooldownRemaining:Math.max(0,Math.ceil((Number(user.cooldownUntil||0)-Date.now())/1000)),banRemaining:Math.max(0,Math.ceil((Number(user.bannedUntil||0)-Date.now())/1000))}));
   } else {
@@ -159,7 +158,7 @@ function stateWhileLocked_(admin, guestName) {
   }
   return out;
 }
-function publicSong_(r) { return {id:r.id,song:r.song,artist:r.artist,requester:r.requester,requestedAt:r.createdAt,requesterToken:r.requesterToken||""}; }
+function publicSong_(r) { return {id:r.id,song:r.song,artist:r.artist,requester:r.requester,requestedAt:r.createdAt}; }
 function formatSeconds_(s) { s=Math.max(0,Number(s)||0); return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); }
 
 function approveUser_(name) {
@@ -226,7 +225,7 @@ function renumberQueue_(){const rows=getRows_(getSS_().getSheetByName("Queue")).
 function getPlayback_(){const v=getSS_().getSheetByName("Playback").getDataRange().getValues(),o={};for(let i=1;i<v.length;i++)o[String(v[i][0])]=String(v[i][1]);return o;}
 function setPlayback_(changes){const sh=getSS_().getSheetByName("Playback"),v=sh.getDataRange().getValues();Object.keys(changes).forEach(k=>{let found=false;for(let i=1;i<v.length;i++)if(String(v[i][0])===k){sh.getRange(i+1,2).setValue(changes[k]);found=true;break;}if(!found)sh.appendRow([k,changes[k]]);});}
 function getRows_(sh){const v=sh.getDataRange().getValues();if(v.length<2)return[];const headers=v[0].map(String);return v.slice(1).filter(row=>row.some(x=>x!=="")).map(row=>{const o={};headers.forEach((h,i)=>o[h]=row[i] instanceof Date?row[i].getTime():String(row[i]==null?"":row[i]));return o;});}
-function removeLegacyDeviceIdColumn_(ss,name){const sh=ss.getSheetByName(name);if(!sh||sh.getLastRow()===0)return;const headers=sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);const index=headers.indexOf("deviceId");if(index>=0)sh.deleteColumn(index+1);}
+function removeLegacyIdentityColumns_(ss,name){const sh=ss.getSheetByName(name);if(!sh||sh.getLastRow()===0)return;const headers=sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);["deviceId","requesterToken"].forEach(field=>{const index=headers.indexOf(field);if(index>=0)sh.deleteColumn(index+1);});}
 function ensureSheet_(ss,name,headers){let sh=ss.getSheetByName(name);if(!sh)sh=ss.insertSheet(name);if(sh.getLastRow()===0){sh.appendRow(headers);return;}const existing=sh.getRange(1,1,1,Math.max(1,sh.getLastColumn())).getValues()[0].map(String);headers.forEach(h=>{if(existing.indexOf(h)<0){const col=sh.getLastColumn()+1;sh.getRange(1,col).setValue(h);existing.push(h);}});}
 
 function ensureHistoryEntryIds_(){const sh=getSS_().getSheetByName("History"),v=sh.getDataRange().getValues(),headers=v[0].map(String),col=headers.indexOf("entryId");if(col<0)return;for(let i=1;i<v.length;i++)if(!String(v[i][col]||""))sh.getRange(i+1,col+1).setValue(Utilities.getUuid());}

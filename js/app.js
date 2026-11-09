@@ -1,8 +1,7 @@
 (() => {
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
-  const NAME_KEY = "karaloki_guest_name", REQUEST_TOKEN_KEY="karaloki_request_token";
-  let requestToken=localStorage.getItem(REQUEST_TOKEN_KEY)||(()=>{const v=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());localStorage.setItem(REQUEST_TOKEN_KEY,v);return v;})();
+  const NAME_KEY = "karaloki_guest_name";
   let guestName = localStorage.getItem(NAME_KEY) || "";
   let lastState = null, countdownTarget = null, countdownPaused = false, initialLoadDone = false;
   let cooldownUntil = 0, banUntil = 0, busy = false, refreshBusy = false;
@@ -21,6 +20,7 @@
   function msg(id,value,error=false){$(id).textContent=value||"";$(id).style.color=error?"#ff9c9c":"";}
   function time(s){s=Math.max(0,Math.floor(Number(s)||0));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
   function songLabel(item){return item.artist?`${item.song} — ${item.artist}`:item.song;}
+  function normalizeName(value){return String(value||"").trim().replace(/\s+/g," ").toLocaleLowerCase();}
   function showOnly(id){["guest-login-panel","guest-pending-panel","guest-banned-panel","public-content"].forEach(x=>$(x).classList.toggle("hidden",x!==id));$("guest-logout").classList.toggle("hidden",id!=="public-content");}
   function renderQueue(state){
     const list=$("queue-list"),upcoming=state.queue||[],previous=state.previous||[],current=state.current;
@@ -34,7 +34,7 @@
     if(!entries.length){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пока пуста. Закажите первую песню!";list.appendChild(li);return;}
     entries.forEach(({item,kind,number})=>{
       const li=document.createElement("li");li.className=`queue-item public-queue-item ${kind}`;
-      if(kind==="upcoming"&&item.requesterToken===requestToken)li.classList.add("my-request");
+      if(kind==="upcoming"&&normalizeName(item.requester)===normalizeName(guestName))li.classList.add("my-request");
       if(kind==="current")li.setAttribute("aria-current","true");
       const num=document.createElement("span");num.className="queue-number";num.textContent=number;
       const body=document.createElement("div");body.className="queue-item-body";
@@ -114,7 +114,7 @@
     e.preventDefault();if(busy)return;const song=$("song-input").value.trim(),artist=$("artist-input").value.trim();
     if(!song)return msg("request-message","Введите название песни.",true);
     busy=true;$("request-button").disabled=true;$("request-button").classList.add("is-loading");msg("request-message","Добавляем в очередь... ожидайте");
-    try{const result=await api("add",{song,artist,requester:guestName,requesterToken});$("song-input").value="";$("artist-input").value="";msg("request-message",result.message||"Песня добавлена в очередь.");await refresh(true);}
+    try{const result=await api("add",{song,artist,requester:guestName});$("song-input").value="";$("artist-input").value="";msg("request-message",result.message||"Песня добавлена в очередь.");await refresh(true);}
     catch(err){msg("request-message",err.message,true);await refresh(true);}
     finally{busy=false;$("request-button").classList.remove("is-loading");updateRestrictions();}
   });
