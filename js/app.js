@@ -4,7 +4,7 @@
   const NAME_KEY = "karaloki_guest_name";
   let guestName = localStorage.getItem(NAME_KEY) || "";
   let lastState = null, countdownTarget = null, countdownPaused = false, initialLoadDone = false;
-  let cooldownUntil = 0, banUntil = 0, busy = false, refreshBusy = false;
+  let cooldownUntil = 0, banUntil = 0, busy = false, refreshBusy = false, zeroRefreshRequested = false;
 
   function api(action, params = {}) {
     if (!cfg.API_URL || cfg.API_URL.includes("PASTE_YOUR")) return Promise.reject(new Error("Сначала укажите URL Apps Script в файле js/config.js."));
@@ -50,7 +50,7 @@
     $("current-song").textContent=current?songLabel(current):"Пока ничего не играет";
     $("current-requester").textContent=current?`Заказал(а): ${current.requester}`:"Будьте первым, кто закажет песню";
     $("playback-state").textContent=state.paused?"Пауза":(current?"Играет":"Ожидание");
-    countdownPaused=!!state.paused;countdownTarget=current&&!countdownPaused?Date.now()+Math.max(0,Number(state.remainingSeconds)||0)*1000:null;
+    countdownPaused=!!state.paused;countdownTarget=current&&!countdownPaused?Date.now()+Math.max(0,Number(state.remainingSeconds)||0)*1000:null;zeroRefreshRequested=false;
     $("countdown").textContent=current?time(state.remainingSeconds):"—";$("countdown").classList.toggle("paused",countdownPaused);
     renderQueue(state);
     if(guestName&&state.guest){
@@ -119,6 +119,6 @@
     finally{busy=false;$("request-button").classList.remove("is-loading");updateRestrictions();}
   });
   if(guestName){$("guest-name-input").value=guestName;showOnly("guest-pending-panel");$("pending-name").textContent=guestName;}else showOnly("guest-login-panel");
-  setInterval(()=>{if(countdownTarget!==null&&!countdownPaused)$("countdown").textContent=time(Math.ceil((countdownTarget-Date.now())/1000));updateRestrictions();},1000);
+  setInterval(()=>{if(countdownTarget!==null&&!countdownPaused){const remaining=Math.ceil((countdownTarget-Date.now())/1000);$("countdown").textContent=time(remaining);if(remaining<=0&&!zeroRefreshRequested){zeroRefreshRequested=true;refresh(true);}}updateRestrictions();},1000);
   refresh();setInterval(refresh,Math.max(5000,Number(cfg.REFRESH_MS)||5000));
 })();

@@ -202,3 +202,10 @@ body{
  .control-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
  .control-grid button{min-height:62px;padding:8px 5px;font-size:clamp(.65rem,2.5vw,.82rem)}
 }
+
+/* v1.8: consistent four-way drag handle rendered as inline SVG */
+.drag-handle{display:inline-flex;align-items:center;justify-content:center;min-width:36px;min-height:36px;padding:7px;border:1px solid rgba(80,220,220,.38);border-radius:9px;background:rgba(20,25,45,.72);color:#72e7e4;cursor:grab}
+.drag-handle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.drag-handle:active{cursor:grabbing}
+.drag-armed .drag-handle{background:rgba(40,220,190,.18);border-color:#61f0d0;box-shadow:0 0 12px rgba(60,240,210,.3)}
+.drag-armed{outline:1px dashed rgba(97,240,208,.55);outline-offset:2px}

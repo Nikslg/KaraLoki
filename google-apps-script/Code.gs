@@ -10,8 +10,6 @@ const HISTORY_HEADERS = ["id","song","artist","requester","result","playedAt","h
 const USER_HEADERS = ["name","nameKey","status","cooldownUntil","bannedUntil","createdAt","updatedAt"];
 const DEFAULT_SONG_SECONDS = 300;
 const DEFAULT_COOLDOWN_SECONDS = 900;
-const SONG_SECONDS = DEFAULT_SONG_SECONDS;
-const COOLDOWN_SECONDS = DEFAULT_COOLDOWN_SECONDS;
 const TEMP_BAN_SECONDS = 1800;
 const OWNER_NAME = "RadioLoki";
 
@@ -29,7 +27,7 @@ function setupKaraLoki() {
   ensureSheet_(ss, "Settings", ["key","value"]);
   if (getRows_(ss.getSheetByName("Settings")).length===0) ss.getSheetByName("Settings").getRange(1,1,4,2).setValues([["key","value"],["autoplay","true"],["songSeconds","300"],["cooldownSeconds","900"]]);
   const pb = ss.getSheetByName("Playback");
-  if (pb.getLastRow() < 2) pb.getRange(2,1,4,2).setValues([["currentSongId",""],["paused","false"],["startedAt",""],["remainingSeconds",String(SONG_SECONDS)]]);
+  if (pb.getLastRow() < 2) pb.getRange(2,1,4,2).setValues([["currentSongId",""],["paused","false"],["startedAt",""],["remainingSeconds",String(DEFAULT_SONG_SECONDS)]]);
 }
 
 function doGet(e) {
@@ -136,20 +134,19 @@ function stateWhileLocked_(admin, guestName) {
   const ss = getSS_(); ensureCurrent_();
   let pb = getPlayback_(), rows = getRows_(ss.getSheetByName("Queue"));
   let current = rows.find(r => r.id === pb.currentSongId && r.status === "Playing") || null;
-  let remaining = Number(pb.remainingSeconds || SONG_SECONDS);
+  let remaining = Number(pb.remainingSeconds || getSettings_().songSeconds);
   if (current && String(pb.paused) !== "true" && pb.startedAt) {
     remaining = Math.max(0, getSettings_().songSeconds - Math.floor((Date.now()-new Date(pb.startedAt).getTime())/1000));
-    if (remaining <= 0 && getSettings_().autoplay) { advance_("Completed"); pb=getPlayback_(); rows=getRows_(ss.getSheetByName("Queue")); current=rows.find(r=>r.id===pb.currentSongId&&r.status==="Playing")||null; remaining=current?SONG_SECONDS:0; }
+    if (remaining <= 0 && getSettings_().autoplay) { advance_("Completed"); pb=getPlayback_(); rows=getRows_(ss.getSheetByName("Queue")); current=rows.find(r=>r.id===pb.currentSongId&&r.status==="Playing")||null; remaining=current?getSettings_().songSeconds:0; }
   }
   const queue = rows.filter(r => r.status === "Waiting").sort((a,b)=>Number(a.position)-Number(b.position)).map(publicSong_);
   const historyRows = getRows_(ss.getSheetByName("History"));
   const visibleHistory = historyRows.filter(h => !truthy_(h.hidden) && ["Completed","Skipped","Interrupted","Removed","Replayed"].includes(String(h.result)));
   const history = visibleHistory.filter(h=>!truthy_(h.cleared)).slice(-200).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
   const playedHistory = visibleHistory.filter(h => ["Completed","Skipped","Interrupted","Replayed"].includes(String(h.result)));
-  const recent = playedHistory.slice(-3).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
   const previous = playedHistory.slice(-2).map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
   const settings=getSettings_();
-  const out = {current:current?publicSong_(current):null,queue,history,recent,previous,paused:String(pb.paused)==="true",remainingSeconds:current?remaining:null,eventMode:settings.eventMode,settings};
+  const out = {current:current?publicSong_(current):null,queue,history,previous,paused:String(pb.paused)==="true",remainingSeconds:current?remaining:null,eventMode:settings.eventMode,settings};
   if (admin) {
     out.users = getRows_(ss.getSheetByName("Users")).map(user => ({name:user.name,status:user.status,cooldownRemaining:Math.max(0,Math.ceil((Number(user.cooldownUntil||0)-Date.now())/1000)),banRemaining:Math.max(0,Math.ceil((Number(user.bannedUntil||0)-Date.now())/1000))}));
   } else {
@@ -177,13 +174,13 @@ function ensureCurrent_() {
   const pb=getPlayback_(), rows=getRows_(getSS_().getSheetByName("Queue"));
   if(pb.currentSongId&&rows.some(r=>r.id===pb.currentSongId&&r.status==="Playing"))return;
   const next=rows.filter(r=>r.status==="Waiting").sort((a,b)=>Number(a.position)-Number(b.position))[0];
-  if(next){updateQueueStatus_(next.id,"Playing");setPlayback_({currentSongId:next.id,paused:"false",startedAt:new Date().toISOString(),remainingSeconds:String(SONG_SECONDS)});}
-  else setPlayback_({currentSongId:"",paused:"false",startedAt:"",remainingSeconds:String(SONG_SECONDS)});
+  if(next){updateQueueStatus_(next.id,"Playing");setPlayback_({currentSongId:next.id,paused:"false",startedAt:new Date().toISOString(),remainingSeconds:String(DEFAULT_SONG_SECONDS)});}
+  else setPlayback_({currentSongId:"",paused:"false",startedAt:"",remainingSeconds:String(DEFAULT_SONG_SECONDS)});
 }
 function advance_(result) {
   const pb=getPlayback_();
   if(pb.currentSongId){const cur=getRows_(getSS_().getSheetByName("Queue")).find(r=>r.id===pb.currentSongId&&r.status==="Playing");if(cur){appendHistory_(cur,result);updateQueueStatus_(cur.id,result);}}
-  setPlayback_({currentSongId:"",paused:"false",startedAt:"",remainingSeconds:String(SONG_SECONDS)});ensureCurrent_();renumberQueue_();
+  setPlayback_({currentSongId:"",paused:"false",startedAt:"",remainingSeconds:String(DEFAULT_SONG_SECONDS)});ensureCurrent_();renumberQueue_();
 }
 function playSong_(id) {
   const ss=getSS_(),sh=ss.getSheetByName("Queue"),rows=getRows_(sh),target=rows.find(r=>r.id===id&&["Waiting","Completed","Skipped","Interrupted","Removed"].includes(r.status));
@@ -191,7 +188,7 @@ function playSong_(id) {
   const pb=getPlayback_();if(pb.currentSongId===id&&target.status==="Playing")return;
   if(pb.currentSongId){const cur=rows.find(r=>r.id===pb.currentSongId&&r.status==="Playing");if(cur){appendHistory_(cur,"Interrupted");updateQueueStatus_(cur.id,"Interrupted");}}
   if(["Completed","Skipped","Interrupted","Removed"].includes(target.status))setLatestHistoryResult_(id,"Replayed");
-  updateQueueStatus_(id,"Playing");setPlayback_({currentSongId:id,paused:"false",startedAt:new Date().toISOString(),remainingSeconds:String(SONG_SECONDS)});renumberQueue_();
+  updateQueueStatus_(id,"Playing");setPlayback_({currentSongId:id,paused:"false",startedAt:new Date().toISOString(),remainingSeconds:String(DEFAULT_SONG_SECONDS)});renumberQueue_();
 }
 
 function queueHistorySongNext_(id) {
@@ -211,8 +208,8 @@ function clearQueue_() {
   Object.keys(affected).forEach(key=>{if(key&&findUser_(key))updateUser_(key,{cooldownUntil:0,updatedAt:new Date()});});
   renumberQueue_();
 }
-function pause_(){const pb=getPlayback_();if(!pb.currentSongId||String(pb.paused)==="true")return;const remaining=Math.max(0,SONG_SECONDS-Math.floor((Date.now()-new Date(pb.startedAt).getTime())/1000));setPlayback_({paused:"true",remainingSeconds:String(remaining)});}
-function resume_(){const pb=getPlayback_();if(!pb.currentSongId||String(pb.paused)!=="true")return;const remaining=Number(pb.remainingSeconds||SONG_SECONDS);setPlayback_({paused:"false",startedAt:new Date(Date.now()-(SONG_SECONDS-remaining)*1000).toISOString()});}
+function pause_(){const pb=getPlayback_();if(!pb.currentSongId||String(pb.paused)==="true")return;const remaining=Math.max(0,getSettings_().songSeconds-Math.floor((Date.now()-new Date(pb.startedAt).getTime())/1000));setPlayback_({paused:"true",remainingSeconds:String(remaining)});}
+function resume_(){const pb=getPlayback_();if(!pb.currentSongId||String(pb.paused)!=="true")return;const remaining=Number(pb.remainingSeconds||getSettings_().songSeconds);setPlayback_({paused:"false",startedAt:new Date(Date.now()-(getSettings_().songSeconds-remaining)*1000).toISOString()});}
 function moveQueueItem_(id,direction){const rows=getRows_(getSS_().getSheetByName("Queue")).filter(r=>r.status==="Waiting").sort((a,b)=>Number(a.position)-Number(b.position));const i=rows.findIndex(r=>r.id===id),j=direction==="up"?i-1:direction==="down"?i+1:-1;if(i<0)throw new Error("Песня уже не находится в очереди.");if(j<0||j>=rows.length)return;const a=rows[i],b=rows[j];updatePosition_(a.id,Number(b.position));updatePosition_(b.id,Number(a.position));}
 function removeQueueItem_(id){const row=getRows_(getSS_().getSheetByName("Queue")).find(r=>r.id===id&&r.status==="Waiting");if(!row)throw new Error("Песня уже не находится в очереди.");appendHistory_(row,"Removed");updateQueueStatus_(id,"Removed");const key=nameKey_(row.requester);if(key&&findUser_(key))updateUser_(key,{cooldownUntil:0,updatedAt:new Date()});renumberQueue_();}
 function appendHistory_(r,result){getSS_().getSheetByName("History").appendRow([r.id,r.song,r.artist,r.requester,result,new Date(),false,Utilities.getUuid()]);}
@@ -235,7 +232,6 @@ function clean_(v,max){return String(v||"").replace(/[<>]/g,"").trim().replace(/
 function truthy_(v){return v===true||String(v).toLowerCase()==="true"||String(v)==="1";}
 function findUser_(key){if(!key)return null;const rows=getRows_(getSS_().getSheetByName("Users"));return rows.find(r=>String(r.nameKey||nameKey_(r.name))===key)||null;}
 function updateUser_(key,changes){const sh=getSS_().getSheetByName("Users"),v=sh.getDataRange().getValues(),headers=v[0].map(String);for(let i=1;i<v.length;i++){const rowKey=String(v[i][headers.indexOf("nameKey")]||nameKey_(v[i][headers.indexOf("name")]));if(rowKey===key){Object.keys(changes).forEach(k=>{const col=headers.indexOf(k);if(col>=0)sh.getRange(i+1,col+1).setValue(changes[k]);});return;}}throw new Error("Пользователь не найден.");}
-function deleteUser_(key){const sh=getSS_().getSheetByName("Users"),v=sh.getDataRange().getValues(),headers=v[0].map(String),nameCol=headers.indexOf("nameKey"),displayCol=headers.indexOf("name");for(let i=v.length-1;i>=1;i--){const rowKey=String(v[i][nameCol]||nameKey_(v[i][displayCol]));if(rowKey===key){sh.deleteRow(i+1);return;}}}
 
 function getSettings_(){const rows=getRows_(getSS_().getSheetByName("Settings")),o={autoplay:true,songSeconds:300,cooldownSeconds:900,eventMode:false};rows.forEach(r=>{if(r.key==="autoplay")o.autoplay=truthy_(r.value);if(r.key==="songSeconds")o.songSeconds=Math.max(60,Math.min(1800,Number(r.value)||300));if(r.key==="cooldownSeconds")o.cooldownSeconds=Math.max(0,Math.min(7200,Number(r.value)||0));if(r.key==="eventMode")o.eventMode=truthy_(r.value);});return o;}
 function setSetting_(key,value){const sh=getSS_().getSheetByName("Settings"),v=sh.getDataRange().getValues();for(let i=1;i<v.length;i++)if(String(v[i][0])===key){sh.getRange(i+1,2).setValue(value);return;}sh.appendRow([key,value]);}
@@ -243,4 +239,4 @@ function saveSettings_(p){setSetting_("autoplay",String(p.autoplay)==="true");se
 function setEventMode_(enabled){setSetting_("eventMode",enabled);}
 function clearHistory_(){const sh=getSS_().getSheetByName("History"),v=sh.getDataRange().getValues(),headers=v[0].map(String),col=headers.indexOf("cleared");if(col<0)throw new Error("Поле cleared отсутствует. Запустите setupKaraLoki.");if(v.length>1)sh.getRange(2,col+1,v.length-1,1).setValue(true);}
 function shuffleQueue_(){const sh=getSS_().getSheetByName("Queue"),rows=getRows_(sh).filter(r=>r.status==="Waiting").sort((a,b)=>Number(a.position)-Number(b.position));const eligible=rows.slice(3);if(eligible.length<2)throw new Error("Нужно минимум две песни после первых трёх.");for(let i=eligible.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[eligible[i],eligible[j]]=[eligible[j],eligible[i]];}rows.forEach((r,i)=>updatePosition_(r.id,i+1));eligible.forEach((r,i)=>updatePosition_(r.id,i+4));}
-function reorderQueue_(idsJson){const ids=JSON.parse(idsJson);if(!Array.isArray(ids))throw new Error("Некорректный порядок песен.");const rows=getRows_(getSS_().getSheetByName("Queue")).filter(r=>r.status==="Waiting").sort((a,b)=>Number(a.position)-Number(b.position));const fixed=rows.slice(0,3).map(r=>r.id),movable=rows.slice(3).map(r=>r.id);if(ids.length!==movable.length||ids.some(id=>!movable.includes(id)))throw new Error("Список песен изменился. Обновите очередь.");const final=[...fixed,...ids];final.forEach((id,i)=>updatePosition_(id,i+1));}
+function reorderQueue_(idsJson){const ids=JSON.parse(idsJson);if(!Array.isArray(ids))throw new Error("Некорректный порядок песен.");const rows=getRows_(getSS_().getSheetByName("Queue")).filter(r=>r.status==="Waiting").sort((a,b)=>Number(a.position)-Number(b.position));const fixed=rows.slice(0,3).map(r=>r.id),movable=rows.slice(3).map(r=>r.id);if(ids.length!==movable.length||new Set(ids).size!==movable.length||ids.some(id=>!movable.includes(id))||movable.some(id=>!ids.includes(id)))throw new Error("Список песен изменился. Обновите очередь.");const final=[...fixed,...ids];final.forEach((id,i)=>updatePosition_(id,i+1));}
