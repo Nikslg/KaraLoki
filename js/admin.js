@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const cfg=window.KARALOKI_CONFIG||{},$=id=>document.getElementById(id),OWNER_NAME="RadioLoki",ADMIN_KEY="karaloki_admin_unlocked";
-  let ownerName=sessionStorage.getItem(ADMIN_KEY)==="1"?OWNER_NAME:"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,refreshBusy=false;
+  let ownerName=sessionStorage.getItem(ADMIN_KEY)==="1"?OWNER_NAME:"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,refreshBusy=false,serverOffsetMs=0,zeroAdvanceBusy=false;
   const rowLocks=new Set(); let pendingOps=0,optimisticOps=0;
   function api(action,params={}){if(!cfg.API_URL||cfg.API_URL.includes("PASTE_YOUR"))return Promise.reject(new Error("Сначала укажите URL Apps Script в js/config.js."));return new Promise((resolve,reject)=>{const callback="kl_admin_cb_"+Math.random().toString(36).slice(2),query=new URLSearchParams({action,callback,...params}),script=document.createElement("script"),timeout=setTimeout(()=>finish(new Error("Сервер не ответил.")),15000);function finish(err,data){clearTimeout(timeout);delete window[callback];script.remove();err?reject(err):resolve(data);}window[callback]=data=>data&&data.ok?finish(null,data):finish(new Error(data?.error||"Не удалось выполнить запрос."));script.onerror=()=>finish(new Error("Не удалось связаться с Apps Script."));script.src=cfg.API_URL+(cfg.API_URL.includes("?")?"&":"?")+query.toString();document.body.appendChild(script);});}
   function time(s){s=Math.max(0,Math.floor(Number(s)||0));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
@@ -116,12 +116,12 @@
   function render(state){
     lastState=state;const c=state.current;
     $("current-song").textContent=c?label(c):"Пока ничего не играет";$("current-requester").textContent=c?`Заказал(а): ${c.requester}`:"Нет активного заказа";
-    $("playback-state").textContent=state.paused?"Пауза":(c?"Играет":"Ожидание");countdownPaused=!!state.paused;
-    countdownTarget=c&&!countdownPaused?Date.now()+Math.max(0,Number(state.remainingSeconds)||0)*1000:null;
+    $("playback-state").textContent=state.paused?"Пауза":(c?"Играет":"Ожидание");countdownPaused=!!state.paused;serverOffsetMs=Number(state.serverNow||Date.now())-Date.now();
+    countdownTarget=c&&!countdownPaused&&state.expiresAt?Number(state.expiresAt):(c&&!countdownPaused?Date.now()+serverOffsetMs+Math.max(0,Number(state.remainingSeconds)||0)*1000:null);
     $("countdown").textContent=c?time(state.remainingSeconds):"—";$("countdown").classList.toggle("paused",countdownPaused);
     $("pause-button").textContent=state.paused?"▶ Продолжить":"Ⅱ Пауза";
     renderCombinedQueue(state);renderSongList("history-list",state.history||[],"history");
-    const settings=state.settings||{};$("autoplay-setting").checked=settings.autoplay!==false;$("song-duration-setting").value=settings.songSeconds||300;$("cooldown-setting").value=settings.cooldownSeconds??900;
+    const settings=state.settings||{};$("autoplay-setting").checked=settings.autoplay!==false;if(document.activeElement!==$("song-duration-setting"))$("song-duration-setting").value=secondsToClock(settings.songSeconds||300);$("cooldown-setting").value=settings.cooldownSeconds??900;
     $("event-mode-button").textContent=state.eventMode?"▶ Режим: вкл.":"⏸ Режим: выкл.";$("event-mode-button").classList.toggle("danger",!!state.eventMode);
     $("queue-count").textContent=`${(state.queue||[]).length} песен`;$("shuffle-button").disabled=Math.max(0,(state.queue||[]).length-3)<2;$("history-count").textContent=String((state.history||[]).length);renderUsers(state.users||[]);
   }
@@ -144,12 +144,24 @@
   $("event-mode-button").addEventListener("click",()=>adminAction("setEventMode",{enabled:String(!lastState?.eventMode)}));
   $("shuffle-button").addEventListener("click",()=>{const n=Math.max(0,(lastState?.queue||[]).length-3);if(n<2)return;if(confirm(`Перемешать ${n} песен после первых трёх?`))adminAction("shuffle");});
   $("clear-history-button").addEventListener("click",()=>{if(confirm("Отметить все записи истории как очищенные? Данные останутся в Google Sheets."))adminAction("clearHistory");});
-  $("save-settings-button").addEventListener("click",()=>adminAction("saveSettings",{autoplay:String($("autoplay-setting").checked),songSeconds:$("song-duration-setting").value,cooldownSeconds:$("cooldown-setting").value}));
+  function secondsToClock(value){const n=Math.max(0,Number(value)||0);return `${Math.floor(n/60)}:${String(n%60).padStart(2,"0")}`;}
+  function clockToSeconds(value){const m=String(value||"").trim().match(/^(\d{1,2}):([0-5]\d)$/);if(!m)return null;const n=Number(m[1])*60+Number(m[2]);return n>=60&&n<=1800?n:null;}
+  $("save-settings-button").addEventListener("click",()=>{const seconds=clockToSeconds($("song-duration-setting").value);if(seconds===null){message("settings-message","Введите длительность в формате М:СС (например, 5:00). Допустимо от 1:00 до 30:00.",true);return;}adminAction("saveSettings",{autoplay:String($("autoplay-setting").checked),songSeconds:String(seconds),cooldownSeconds:$("cooldown-setting").value});});
   $("skip-button").addEventListener("click",()=>adminAction("skip"));
   $("pause-button").addEventListener("click",()=>adminAction(lastState?.paused?"resume":"pause"));
   $("clear-queue-button").addEventListener("click",()=>{if(confirm("Очистить все ожидающие песни? Ожидание затронутых гостей будет снято. История сохранится."))adminAction("clearQueue");});
   $("admin-request-form").addEventListener("submit",async e=>{e.preventDefault();const song=$("admin-song-input").value.trim(),artist=$("admin-artist-input").value.trim();if(!song)return;await adminAction("add",{song,artist,requester:OWNER_NAME,ownerName});$("admin-song-input").value="";$("admin-artist-input").value="";});
   unlocked(!!ownerName);switchTab("queue-tab");
-  setInterval(()=>{if(countdownTarget!==null&&!countdownPaused)$("countdown").textContent=time(Math.ceil((countdownTarget-Date.now())/1000));},1000);
+  async function requestAdvance(){
+    if(zeroAdvanceBusy||!lastState?.settings?.autoplay)return;zeroAdvanceBusy=true;
+    optimisticOps++;
+    const optimistic={...lastState,previous:[...(lastState.previous||[]),...(lastState.current?[lastState.current]:[])].slice(-2)};
+    const next=(optimistic.queue||[])[0]||null;
+    if(next){optimistic.current=next;optimistic.queue=optimistic.queue.slice(1);optimistic.paused=false;optimistic.serverNow=Date.now()+serverOffsetMs;optimistic.expiresAt=optimistic.serverNow+Math.max(60,Number(optimistic.settings?.songSeconds)||300)*1000;optimistic.remainingSeconds=Number(optimistic.settings?.songSeconds)||300;render(optimistic);}
+    else{$("playback-state").textContent="Ожидание обновления…";}
+    try{await api("advanceIfExpired");}catch(e){message("control-message",e.message,true);}finally{optimisticOps=Math.max(0,optimisticOps-1);zeroAdvanceBusy=false;await refresh(true);}
+  }
+  setInterval(()=>{if(countdownTarget!==null&&!countdownPaused){const remaining=Math.ceil((countdownTarget-(Date.now()+serverOffsetMs))/1000);$("countdown").textContent=time(remaining);if(remaining<=0)requestAdvance();}},1000);
+  document.querySelectorAll('a[href="index.html"]') .forEach(a=>a.addEventListener("click",e=>{e.preventDefault();const href=a.href,overlay=$("startup-loading");if(overlay){overlay.classList.remove("is-hidden");const t=overlay.querySelector(".loading-text");if(t)t.textContent="Возвращаемся к публичной очереди…";}setTimeout(()=>{window.location.href=href;},120);}));
   refresh();setInterval(refresh,Math.max(5000,Number(cfg.REFRESH_MS)||5000));
 })();

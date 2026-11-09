@@ -49,7 +49,7 @@
       <section class="panel request-panel">
         <div class="section-heading">
           <h2>Заказать песню</h2>
-          <span class="count-pill">Вы: <strong id="confirmed-guest-name"></strong></span>
+          <div class="guest-heading-actions"><span class="count-pill">Вы: <strong id="confirmed-guest-name"></strong></span><button type="button" id="guest-logout" class="quiet compact hidden">Выйти</button></div>
         </div>
         <p id="welcome-message" class="message" aria-live="polite"></p>
         <button type="button" class="quiet compact" id="confirmed-rename">Изменить имя</button>
@@ -76,9 +76,6 @@
         <div class="section-heading"><h2>Трэклист</h2><span id="queue-count" class="count-pill">0 песен</span></div>
         <ol id="queue-list" class="queue-list"><li class="empty">Очередь пока пуста. Закажите первую песню!</li></ol>
       </section>
-      <div class="danger-row">
-        <button type="button" id="guest-logout" class="quiet hidden">Выйти</button>
-      </div>
     </div>
 
     <footer class="footer muted">KaraLoki · Караоке-вечеринка · <a href="admin.html">Панель ведущего</a></footer>

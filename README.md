@@ -1,4 +1,4 @@
-# KaraLoki v1.8.2 — очередь караоке и панель ведущего
+# KaraLoki v1.8.3 — очередь караоке и панель ведущего
 
 KaraLoki — веб-приложение для очереди песен. Сайт размещается на GitHub Pages, данные хранятся в Google Sheets, серверная логика работает через Google Apps Script.
 
@@ -45,7 +45,9 @@ KaraLoki — веб-приложение для очереди песен. Са�
 - Удаление песни из очереди и очистка ожидающей очереди снимают ожидание затронутых пользователей.
 - Добавлен адаптивный тёмный фон с неоновой эмблемой микрофона с рогами; отдельный логотип не добавлялся, заголовок KaraLoki оставлен текстовым.
 - Оформление учитывает настольные и мобильные экраны. Фон не перекрывает элементы управления.
-- Фоновый опрос — каждые 5 секунд; после действий выполняется немедленное обновление; локальные таймеры обновляются каждую секунду.
+- Фоновый опрос — каждые 5 секунд; локальные таймеры обновляются каждую секунду по серверной отметке времени. На нуле клиент немедленно запрашивает атомарный переход; сервер фиксирует его один раз.
+- Длительность песни в настройках задаётся только в формате М:СС (например, 5:00 или 4:30).
+- Переход между гостевой и административной страницами показывает экран загрузки; гостевой выход перемещён в заголовок блока заказа песни.
 - Сохранён пятиминутный слот воспроизведения и управление паузой/пропуском; «Пропустить» срабатывает без дополнительного подтверждения.
 
 ## Важное ограничение имени как идентификатора
@@ -101,6 +103,8 @@ KaraLoki — веб-приложение для очереди песен. Са�
 
 ## v1.8.2 — Admin responsiveness and guest name changes
 
+## v1.8.3 — Server-synchronized local playback timer and UI refinements
+
 - Pending-user approvals now update the list immediately and run independently, so multiple guests can be approved without waiting for each other. Failed approvals restore the row and show the server error.
 - Queue up/down controls update optimistically and reconcile with the Google Sheets backend. Drag-and-drop remains available.
 - History playback buttons remain locked while the server processes the request.
@@ -111,3 +115,13 @@ KaraLoki — веб-приложение для очереди песен. Са�
 **Deployment:** back up the existing Google Sheet, replace `Code.gs` in the existing Apps Script project, deploy a new web-app version, and keep the same `/exec` URL in `js/config.js`. Then replace the GitHub Pages project files with this archive. Do not run setup against a new spreadsheet.
 
 **Identity limitation:** KaraLoki uses guest display names as identities rather than passwords or device tokens. Name changes therefore preserve the existing name-based identity model and should not be treated as secure account authentication.
+
+### Изменения v1.8.3
+
+- Google Apps Script возвращает серверное время и точное время окончания текущей песни. Браузеры считают таймер локально, не опрашивая таблицу каждую секунду.
+- При достижении нуля клиент сразу вызывает `advanceIfExpired`; серверная блокировка защищает от двойного перехода между песнями.
+- Сохранение длительности пересчитывает тайминг текущего трека; поле настроек принимает только формат `M:SS` (1:00–30:00).
+- Исправлена подпись заказа песни в Admin; добавлен отступ между трэклистом и формой заказа гостя; кнопка выхода гостя перенесена в заголовок формы.
+- Добавлен экран загрузки при переходе между гостевой и административной страницами.
+
+**Важно:** после обновления фронтенда обязательно замените `Code.gs` и разверните новую версию Apps Script. Старый `/exec` URL остаётся тем же.

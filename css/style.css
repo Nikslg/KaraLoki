@@ -237,3 +237,8 @@ body{
 .shuffle-icon-button{width:40px;height:40px;min-width:40px;padding:0}
 .shuffle-icon-button svg{width:20px;height:20px}
 @media(max-width:520px){.confirmed-entry .icon-button.square-action{width:29px;height:30px;min-width:29px}.admin-loading{top:8px;font-size:.78rem}}
+
+/* v1.8.3 guest tracklist/request spacing parity */
+#public-content > .panel + .panel{margin-top:16px}
+
+.guest-heading-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}

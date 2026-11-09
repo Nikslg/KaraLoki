@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <div id="startup-loading" class="startup-loading is-hidden" role="status" aria-live="polite"><div class="loading-mark">KaraLoki</div><div class="loading-spinner"></div><div class="loading-text">Открываем панель…</div></div>
   <header class="site-header">
     <div class="brand">KaraLoki <span class="admin-brand">HOST</span></div>
     <div class="now-playing">
@@ -61,7 +62,7 @@
         </section>
 
         <section class="panel">
-          <h2>Заказать песню от ведущего</h2>
+          <h2>Заказать песню</h2>
           <form id="admin-request-form">
             <div class="field-row">
               <label>Название песни
@@ -108,7 +109,7 @@
         <section class="panel">
           <h2>Настройки мероприятия</h2>
           <label class="visibility-toggle"><input id="autoplay-setting" type="checkbox" checked> Автоматически запускать следующую песню</label>
-          <label>Длительность песни (секунды)<input id="song-duration-setting" type="number" min="60" max="1800" step="30" value="300"></label>
+          <label>Длительность песни (М:СС)<input id="song-duration-setting" type="text" inputmode="numeric" pattern="[0-9]{1,2}:[0-5][0-9]" placeholder="5:00" value="5:00"></label>
           <label>Задержка между заявками (секунды)<input id="cooldown-setting" type="number" min="0" max="7200" step="60" value="900"></label>
           <button id="save-settings-button" class="primary" type="button">Сохранить настройки</button>
           <p id="settings-message" class="message" aria-live="polite"></p>
@@ -116,7 +117,7 @@
       </div>
     </div>
 
-    <footer class="footer muted"><a href="index.html">← К публичной очереди</a></footer>
+    <footer class="footer muted"><a href="index.html" id="guest-panel-link">← К публичной очереди</a></footer>
   </main>
   <script src="js/config.js"></script>
   <script src="js/admin.js"></script>

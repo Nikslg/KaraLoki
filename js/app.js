@@ -3,8 +3,8 @@
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
   let guestName = localStorage.getItem(NAME_KEY) || "";
-  let lastState = null, countdownTarget = null, countdownPaused = false, initialLoadDone = false;
-  let cooldownUntil = 0, banUntil = 0, busy = false, refreshBusy = false, zeroRefreshRequested = false;
+  let lastState = null, countdownTarget = null, countdownPaused = false, initialLoadDone = false, serverOffsetMs = 0;
+  let cooldownUntil = 0, banUntil = 0, busy = false, refreshBusy = false, zeroRefreshRequested = false, playbackTransitionBusy = false;
 
   function api(action, params = {}) {
     if (!cfg.API_URL || cfg.API_URL.includes("PASTE_YOUR")) return Promise.reject(new Error("Сначала укажите URL Apps Script в файле js/config.js."));
@@ -50,7 +50,7 @@
     $("current-song").textContent=current?songLabel(current):"Пока ничего не играет";
     $("current-requester").textContent=current?`Заказал(а): ${current.requester}`:"Будьте первым, кто закажет песню";
     $("playback-state").textContent=state.paused?"Пауза":(current?"Играет":"Ожидание");
-    countdownPaused=!!state.paused;countdownTarget=current&&!countdownPaused?Date.now()+Math.max(0,Number(state.remainingSeconds)||0)*1000:null;zeroRefreshRequested=false;
+    countdownPaused=!!state.paused;serverOffsetMs=Number(state.serverNow||Date.now())-Date.now();countdownTarget=current&&!countdownPaused&&state.expiresAt?Number(state.expiresAt):(current&&!countdownPaused?Date.now()+serverOffsetMs+Math.max(0,Number(state.remainingSeconds)||0)*1000:null);zeroRefreshRequested=false;
     $("countdown").textContent=current?time(state.remainingSeconds):"—";$("countdown").classList.toggle("paused",countdownPaused);
     renderQueue(state);
     if(guestName&&state.guest){
@@ -80,7 +80,7 @@
   }
   async function refresh(force=false){
     if(refreshBusy){if(!force)return;while(refreshBusy)await new Promise(resolve=>setTimeout(resolve,40));}
-    refreshBusy=true;try{const result=await api("state",{guestName});render(result.state);}catch(e){if(!lastState){$("startup-loading")?.classList.add("is-hidden");msg("guest-login-message","Пока нет ответа от сервера. Проверяем соединение повторно…");} }finally{refreshBusy=false;}
+    refreshBusy=true;try{const result=await api("state",{guestName});if(!playbackTransitionBusy)render(result.state);}catch(e){if(!lastState){$("startup-loading")?.classList.add("is-hidden");msg("guest-login-message","Пока нет ответа от сервера. Проверяем соединение повторно…");} }finally{refreshBusy=false;}
   }
   async function login(name){
     const result=await api("guestLogin",{name});guestName=result.name||name;localStorage.setItem(NAME_KEY,guestName);
@@ -127,6 +127,18 @@
     finally{busy=false;$("request-button").classList.remove("is-loading");updateRestrictions();}
   });
   if(guestName){$("guest-name-input").value=guestName;showOnly("guest-pending-panel");$("pending-name").textContent=guestName;}else showOnly("guest-login-panel");
-  setInterval(()=>{if(countdownTarget!==null&&!countdownPaused){const remaining=Math.ceil((countdownTarget-Date.now())/1000);$("countdown").textContent=time(remaining);if(remaining<=0&&!zeroRefreshRequested){zeroRefreshRequested=true;refresh(true);}}updateRestrictions();},1000);
+  async function requestAdvance(){
+    if(zeroRefreshRequested)return;zeroRefreshRequested=true;
+    if(!lastState?.settings?.autoplay)return;
+    playbackTransitionBusy=true;
+    const optimistic={...lastState,previous:[...(lastState.previous||[]),...(lastState.current?[lastState.current]:[])].slice(-2)};
+    const next=(optimistic.queue||[])[0]||null;
+    if(next){optimistic.current=next;optimistic.queue=optimistic.queue.slice(1);optimistic.paused=false;optimistic.serverNow=Date.now()+serverOffsetMs;optimistic.expiresAt=optimistic.serverNow+Math.max(60,Number(optimistic.settings?.songSeconds)||300)*1000;optimistic.remainingSeconds=Number(optimistic.settings?.songSeconds)||300;render(optimistic);}
+    else{$("playback-state").textContent="Ожидание обновления…";}
+    try{await api("advanceIfExpired");}catch(_){}
+    finally{playbackTransitionBusy=false;await refresh(true);}
+  }
+  setInterval(()=>{if(countdownTarget!==null&&!countdownPaused){const remaining=Math.ceil((countdownTarget-(Date.now()+serverOffsetMs))/1000);$("countdown").textContent=time(remaining);if(remaining<=0)requestAdvance();}updateRestrictions();},1000);
+  document.querySelectorAll('a[href="admin.html"]') .forEach(a=>a.addEventListener("click",e=>{e.preventDefault();const href=a.href,overlay=$("startup-loading");if(overlay){overlay.classList.remove("is-hidden");const t=overlay.querySelector(".loading-text");if(t)t.textContent="Открываем панель ведущего…";}setTimeout(()=>{window.location.href=href;},120);}));
   refresh();setInterval(refresh,Math.max(5000,Number(cfg.REFRESH_MS)||5000));
 })();
