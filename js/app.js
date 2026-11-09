@@ -22,20 +22,80 @@
   function songLabel(item){return item.artist?`${item.song} — ${item.artist}`:item.song;}
   function showOnly(id){["guest-login-panel","guest-pending-panel","guest-banned-panel","public-content"].forEach(x=>$(x).classList.toggle("hidden",x!==id));$("guest-logout").classList.toggle("hidden",id!=="public-content");}
   function renderQueue(items){const list=$("queue-list");list.replaceChildren();$("queue-count").textContent=`${items.length} ${items.length===1?"песня":"песен"}`;if(!items.length){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пока пуста. Закажите первую песню!";list.appendChild(li);return;}items.forEach((item,i)=>{const li=document.createElement("li");li.className="queue-item";const num=document.createElement("span");num.className="queue-number";num.textContent=String(i+1).padStart(2,"0");const body=document.createElement("div");body.className="queue-item-body";const song=document.createElement("div");song.className="queue-song";song.textContent=songLabel(item);const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=`Заказал(а): ${item.requester}`;body.append(song,requester);li.append(num,body);list.appendChild(li);});}
-  function render(state){lastState=state;const current=state.current;$("current-song").textContent=current?songLabel(current):"Пока ничего не играет";$("current-requester").textContent=current?`Заказал(а): ${current.requester}`:"Будьте первым, кто закажет песню";$("playback-state").textContent=state.paused?"Пауза":(current?"Играет":"Ожидание");countdownPaused=!!state.paused;countdownTarget=current&&!countdownPaused?Date.now()+Math.max(0,Number(state.remainingSeconds)||0)*1000:null;$("countdown").textContent=current?time(state.remainingSeconds):"—";$("countdown").classList.toggle("paused",countdownPaused);renderQueue(state.queue||[]);
-    if(guestName&&state.guest){const g=state.guest;if(g.status==="Confirmed"){banUntil=Date.now()+Math.max(0,Number(g.banRemaining)||0)*1000;showOnly("public-content");$("confirmed-guest-name").textContent=g.name;cooldownUntil=Date.now()+Math.max(0,Number(g.cooldownRemaining)||0)*1000;updateRestrictions();}else if(g.status==="Pending"){showOnly("guest-pending-panel");$("pending-name").textContent=g.name;}else{guestName="";localStorage.removeItem(NAME_KEY);showOnly("guest-login-panel");}}
-    else if(guestName){guestName="";localStorage.removeItem(NAME_KEY);showOnly("guest-login-panel");msg("guest-login-message","Имя не подтверждено или заявка отклонена. Введите другое имя.",true);}
+  function render(state){
+    lastState=state;const current=state.current;
+    $("current-song").textContent=current?songLabel(current):"Пока ничего не играет";
+    $("current-requester").textContent=current?`Заказал(а): ${current.requester}`:"Будьте первым, кто закажет песню";
+    $("playback-state").textContent=state.paused?"Пауза":(current?"Играет":"Ожидание");
+    countdownPaused=!!state.paused;countdownTarget=current&&!countdownPaused?Date.now()+Math.max(0,Number(state.remainingSeconds)||0)*1000:null;
+    $("countdown").textContent=current?time(state.remainingSeconds):"—";$("countdown").classList.toggle("paused",countdownPaused);
+    renderQueue(state.queue||[]);
+    if(guestName&&state.guest){
+      const g=state.guest;
+      if(g.status==="Confirmed"){
+        banUntil=Date.now()+Math.max(0,Number(g.banRemaining)||0)*1000;
+        showOnly(banUntil>Date.now()?"guest-banned-panel":"public-content");
+        $("confirmed-guest-name").textContent=g.name;
+        if(banUntil>Date.now())$("guest-ban-message").textContent=`Доступ временно ограничен ещё на ${time(g.banRemaining)}.`;
+        cooldownUntil=Date.now()+Math.max(0,Number(g.cooldownRemaining)||0)*1000;
+        updateRestrictions();
+      }else if(g.status==="Pending"){
+        showOnly("guest-pending-panel");$("pending-name").textContent=g.name;
+      }else if(g.status==="Denied"){
+        guestName="";localStorage.removeItem(NAME_KEY);showOnly("guest-login-panel");
+        msg("guest-login-message","Заявка отклонена. Вы можете выбрать другое имя.",true);
+      }else{showOnly("guest-pending-panel");$("pending-name").textContent=guestName;}
+    }else if(guestName){
+      showOnly("guest-pending-panel");$("pending-name").textContent=guestName;
+    }
   }
-  function updateRestrictions(){const cooldown=Math.max(0,Math.ceil((cooldownUntil-Date.now())/1000)),ban=Math.max(0,Math.ceil((banUntil-Date.now())/1000));$("cooldown-box").classList.toggle("hidden",cooldown<=0);$("cooldown-countdown").textContent=time(cooldown);$("guest-ban-inline").classList.toggle("hidden",ban<=0);$("guest-ban-inline").textContent=ban>0?`Заказы временно заблокированы ещё на ${time(ban)}.`:"";$("request-button").disabled=busy||cooldown>0||ban>0;}
-  async function refresh(force=false){if(refreshBusy){if(!force)return;while(refreshBusy)await new Promise(resolve=>setTimeout(resolve,40));}refreshBusy=true;try{const result=await api("state",{guestName});render(result.state);}catch(e){if(!lastState)msg("guest-login-message",e.message,true);}finally{refreshBusy=false;}}
-  async function login(name){const result=await api("guestLogin",{name});guestName=result.name||name;localStorage.setItem(NAME_KEY,guestName);if(result.status==="pending"){showOnly("guest-pending-panel");$("pending-name").textContent=guestName;msg("guest-login-message","Имя отправлено ведущему на подтверждение.");}else{showOnly("public-content");$("confirmed-guest-name").textContent=guestName;if(result.status==="banned")banUntil=Date.now()+Math.max(0,Number(result.banRemaining)||0)*1000;msg("guest-login-message","");await refresh(true);}}
-  function logout(){guestName="";localStorage.removeItem(NAME_KEY);cooldownUntil=0;banUntil=0;lastState=null;$("guest-name-input").value="";msg("guest-login-message","");showOnly("guest-login-panel");}
+  function updateRestrictions(){
+    const cooldown=Math.max(0,Math.ceil((cooldownUntil-Date.now())/1000)),ban=Math.max(0,Math.ceil((banUntil-Date.now())/1000));
+    $("cooldown-box").classList.toggle("hidden",cooldown<=0);$("cooldown-countdown").textContent=time(cooldown);
+    $("guest-ban-inline").classList.toggle("hidden",ban<=0);$("guest-ban-inline").textContent=ban>0?`Заказы временно заблокированы ещё на ${time(ban)}.`:"";
+    $("request-button").disabled=busy||cooldown>0||ban>0;
+  }
+  async function refresh(force=false){
+    if(refreshBusy){if(!force)return;while(refreshBusy)await new Promise(resolve=>setTimeout(resolve,40));}
+    refreshBusy=true;try{const result=await api("state",{guestName});render(result.state);}catch(e){if(!lastState)msg("guest-login-message",e.message,true);}finally{refreshBusy=false;}
+  }
+  async function login(name){
+    const result=await api("guestLogin",{name});guestName=result.name||name;localStorage.setItem(NAME_KEY,guestName);
+    if(result.status==="pending"){
+      showOnly("guest-pending-panel");$("pending-name").textContent=guestName;
+      msg("pending-message",result.isNew?"Запрос отправлен. Ожидайте подтверждения Администратора.":"Ожидайте подтверждения Администратора.");
+    }else if(result.status==="banned"){
+      banUntil=Date.now()+Math.max(0,Number(result.banRemaining)||0)*1000;showOnly("guest-banned-panel");
+      $("guest-ban-message").textContent=`Доступ временно ограничен ещё на ${time(result.banRemaining)}.`;
+    }else{
+      showOnly("public-content");$("confirmed-guest-name").textContent=guestName;
+      msg("welcome-message",`Добро пожаловать ${guestName}`);
+      await refresh(true);
+    }
+  }
+  function logout(){
+    guestName="";localStorage.removeItem(NAME_KEY);cooldownUntil=0;banUntil=0;lastState=null;
+    $("guest-name-input").value="";msg("guest-login-message","");msg("pending-message","");msg("welcome-message","");msg("request-message","");
+    showOnly("guest-login-panel");
+  }
 
-  $("guest-login-form").addEventListener("submit",async e=>{e.preventDefault();if(busy)return;const name=$("guest-name-input").value.trim();if(name.length<2)return msg("guest-login-message","Введите имя длиной не менее двух символов.",true);busy=true;$("guest-login-button").disabled=true;msg("guest-login-message","Проверяем имя... ожидайте");try{await login(name);}catch(err){msg("guest-login-message",err.message,true);}finally{busy=false;$("guest-login-button").disabled=false;}});
+  $("guest-login-form").addEventListener("submit",async e=>{
+    e.preventDefault();if(busy)return;const name=$("guest-name-input").value.trim();
+    if(name.length<2)return msg("guest-login-message","Введите имя длиной не менее двух символов.",true);
+    busy=true;$("guest-login-button").disabled=true;msg("guest-login-message","Проверяем имя... ожидайте");
+    try{await login(name);}catch(err){msg("guest-login-message",err.message,true);}
+    finally{busy=false;$("guest-login-button").disabled=false;}
+  });
   ["pending-logout","banned-logout","guest-logout"].forEach(id=>$(id).addEventListener("click",logout));
-  $("request-form").addEventListener("submit",async e=>{e.preventDefault();if(busy)return;const song=$("song-input").value.trim(),artist=$("artist-input").value.trim();if(!song)return msg("request-message","Введите название песни.",true);busy=true;$("request-button").disabled=true;$("request-button").classList.add("is-loading");msg("request-message","Добавляем в очередь... ожидайте");try{const result=await api("add",{song,artist,requester:guestName});$("song-input").value="";$("artist-input").value="";msg("request-message",result.message||"Песня добавлена в очередь.");await refresh(true);}catch(err){msg("request-message",err.message,true);await refresh(true);}finally{busy=false;$("request-button").classList.remove("is-loading");updateRestrictions();}});
-
+  $("request-form").addEventListener("submit",async e=>{
+    e.preventDefault();if(busy)return;const song=$("song-input").value.trim(),artist=$("artist-input").value.trim();
+    if(!song)return msg("request-message","Введите название песни.",true);
+    busy=true;$("request-button").disabled=true;$("request-button").classList.add("is-loading");msg("request-message","Добавляем в очередь... ожидайте");
+    try{const result=await api("add",{song,artist,requester:guestName});$("song-input").value="";$("artist-input").value="";msg("request-message",result.message||"Песня добавлена в очередь.");await refresh(true);}
+    catch(err){msg("request-message",err.message,true);await refresh(true);}
+    finally{busy=false;$("request-button").classList.remove("is-loading");updateRestrictions();}
+  });
   if(guestName){$("guest-name-input").value=guestName;showOnly("guest-pending-panel");$("pending-name").textContent=guestName;}else showOnly("guest-login-panel");
   setInterval(()=>{if(countdownTarget!==null&&!countdownPaused)$("countdown").textContent=time(Math.ceil((countdownTarget-Date.now())/1000));updateRestrictions();},1000);
-  refresh();setInterval(refresh,Math.max(5000,Number(cfg.REFRESH_MS)||10000));
+  refresh();setInterval(refresh,Math.max(5000,Number(cfg.REFRESH_MS)||5000));
 })();

@@ -1,5 +1,5 @@
 /**
- * KaraLoki v1.4 — Google Apps Script backend.
+ * KaraLoki v1.5 — Google Apps Script backend.
  * Guest identity is the approved display name (case-insensitive matching).
  * Device IDs and room codes are no longer used. Google Sheets remains the database.
  * RadioLoki is a shared-name convenience gate, not secure authentication.
@@ -46,7 +46,7 @@ function handle_(p) {
     return {ok:true,state:withLock_(() => stateWhileLocked_(true, ""))};
   }
   if (a === "add") return addSong_(p);
-  const adminActions = ["skip","pause","resume","move","remove","play","clearQueue","approveUser","denyUser","liftCooldown","banUser","hideHistory","deleteHistory"];
+  const adminActions = ["skip","pause","resume","move","remove","play","clearQueue","approveUser","denyUser","liftCooldown","banUser","returnToPending","hideHistory","deleteHistory"];
   if (adminActions.indexOf(a) >= 0) {
     requireOwnerName_(p.ownerName);
     return withLock_(() => {
@@ -61,6 +61,7 @@ function handle_(p) {
       if (a === "denyUser") denyUser_(p.name);
       if (a === "liftCooldown") liftCooldown_(p.name);
       if (a === "banUser") banUser_(p.name);
+      if (a === "returnToPending") returnUserToPending_(p.name);
       if (a === "hideHistory") setHistoryHidden_(String(p.historyId || ""), true);
       if (a === "deleteHistory") deleteHistory_(String(p.historyId || ""));
       return {ok:true};
@@ -82,12 +83,16 @@ function guestLogin_(p) {
     if (user) {
       const bannedUntil = Number(user.bannedUntil || 0);
       if (bannedUntil > now) return {ok:true,status:"banned",name:user.name,banRemaining:Math.ceil((bannedUntil-now)/1000)};
-      if (String(user.status) === "Confirmed") return {ok:true,status:"confirmed",name:user.name};
-      if (String(user.status) === "Pending") return {ok:true,status:"pending",name:user.name};
+      if (String(user.status) === "Confirmed") return {ok:true,status:"confirmed",name:user.name,isNew:false};
+      if (String(user.status) === "Pending") return {ok:true,status:"pending",name:user.name,isNew:false};
+      if (String(user.status) === "Denied") {
+        updateUser_(key,{status:"Pending",updatedAt:new Date()});
+        return {ok:true,status:"pending",name:user.name,isNew:false};
+      }
     }
     const sh = getSS_().getSheetByName("Users");
     sh.appendRow([name,key,"Pending",0,0,new Date(),new Date()]);
-    return {ok:true,status:"pending",name:name};
+    return {ok:true,status:"pending",name:name,isNew:true};
   });
 }
 
@@ -125,9 +130,11 @@ function stateWhileLocked_(admin, guestName) {
   }
   const queue = rows.filter(r => r.status === "Waiting").sort((a,b)=>Number(a.position)-Number(b.position)).map(publicSong_);
   const historyRows = getRows_(ss.getSheetByName("History"));
-  const history = historyRows.filter(h => !truthy_(h.hidden) && ["Completed","Skipped","Interrupted","Removed","Replayed"].includes(String(h.result)))
-    .slice(-60).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
-  const out = {current:current?publicSong_(current):null,queue,history,paused:String(pb.paused)==="true",remainingSeconds:current?remaining:null};
+  const visibleHistory = historyRows.filter(h => !truthy_(h.hidden) && ["Completed","Skipped","Interrupted","Removed","Replayed"].includes(String(h.result)));
+  const history = visibleHistory.slice(-60).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
+  const recent = visibleHistory.filter(h => ["Completed","Skipped","Interrupted","Replayed"].includes(String(h.result)))
+    .slice(-3).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
+  const out = {current:current?publicSong_(current):null,queue,history,recent,paused:String(pb.paused)==="true",remainingSeconds:current?remaining:null};
   if (admin) {
     out.users = getRows_(ss.getSheetByName("Users")).map(user => ({name:user.name,status:user.status,cooldownRemaining:Math.max(0,Math.ceil((Number(user.cooldownUntil||0)-Date.now())/1000)),banRemaining:Math.max(0,Math.ceil((Number(user.bannedUntil||0)-Date.now())/1000))}));
   } else {
@@ -145,10 +152,11 @@ function approveUser_(name) {
 }
 function denyUser_(name) {
   const key=nameKey_(name), user=findUser_(key); if(!user||String(user.status)!=="Pending") throw new Error("Заявка пользователя уже недоступна.");
-  deleteUser_(key);
+  updateUser_(key,{status:"Denied",updatedAt:new Date()});
 }
 function liftCooldown_(name) { const key=nameKey_(name), user=findUser_(key); if(!user) throw new Error("Пользователь не найден."); updateUser_(key,{cooldownUntil:0,updatedAt:new Date()}); }
 function banUser_(name) { const key=nameKey_(name), user=findUser_(key); if(!user||String(user.status)!=="Confirmed") throw new Error("Подтверждённый пользователь не найден."); updateUser_(key,{bannedUntil:Date.now()+TEMP_BAN_SECONDS*1000,updatedAt:new Date()}); }
+function returnUserToPending_(name) { const key=nameKey_(name), user=findUser_(key); if(!user||String(user.status)!=="Confirmed") throw new Error("Подтверждённый пользователь не найден."); updateUser_(key,{status:"Pending",updatedAt:new Date()}); }
 
 function ensureCurrent_() {
   const pb=getPlayback_(), rows=getRows_(getSS_().getSheetByName("Queue"));

@@ -20,34 +20,36 @@
 
   <main class="page">
     <section class="panel" id="guest-login-panel">
-      <h2>Вход для гостей</h2>
-      <p class="muted small">Введите своё имя. Новые имена должен подтвердить ведущий. Ранее подтверждённые имена принимаются автоматически.</p>
+      <h2>Вход в очередь</h2>
+      <p class="small muted">Введите своё имя. Новые имена должны быть подтверждены ведущим.</p>
       <form id="guest-login-form">
-        <label for="guest-name-input">Ваше имя
-          <input id="guest-name-input" maxlength="32" placeholder="Имя или никнейм" autocomplete="nickname" required>
-        </label>
+        <label for="guest-name-input">Ваше имя</label>
+        <input id="guest-name-input" maxlength="32" autocomplete="nickname" placeholder="Имя или никнейм" required>
         <button type="submit" class="primary" id="guest-login-button">Продолжить</button>
         <p id="guest-login-message" class="message" aria-live="polite"></p>
       </form>
     </section>
 
     <section class="panel hidden" id="guest-pending-panel">
-      <h2>Ожидание подтверждения</h2>
-      <p>Имя: <strong id="pending-name"></strong></p>
-      <div class="notice notice-wait">Ожидайте одобрения администратора. Заказывать песни пока нельзя.</div>
-      <button type="button" class="quiet" id="pending-logout">Выйти / выбрать другое имя</button>
+      <h2>Ожидайте подтверждения</h2>
+      <p id="pending-message" class="message" aria-live="polite">Ожидайте подтверждения Администратора.</p>
+      <p><strong id="pending-name"></strong></p>
+      <button type="button" id="pending-logout" class="quiet">Выйти</button>
     </section>
 
     <section class="panel hidden" id="guest-banned-panel">
-      <h2>Временное ограничение</h2>
-      <p id="guest-ban-message" class="notice notice-ban">Заказы временно заблокированы.</p>
-      <button type="button" class="quiet" id="banned-logout">Выйти</button>
+      <h2>Доступ временно ограничен</h2>
+      <p id="guest-ban-message" class="notice notice-ban"></p>
+      <button type="button" id="banned-logout" class="quiet">Выйти</button>
     </section>
 
     <div id="public-content" class="hidden">
       <section class="panel request-panel">
-        <div class="section-heading"><h2>Заказать песню</h2></div>
-        <p class="small muted">Вы вошли как <strong id="confirmed-guest-name"></strong>. Изменить имя после подтверждения нельзя.</p>
+        <div class="section-heading">
+          <h2>Заказать песню</h2>
+          <span class="count-pill">Вы: <strong id="confirmed-guest-name"></strong></span>
+        </div>
+        <p id="welcome-message" class="message" aria-live="polite"></p>
         <form id="request-form">
           <div class="field-row">
             <label>Название песни
@@ -63,7 +65,7 @@
             <div>Пожалуйста подождите перед заказом следующей песни</div>
             <strong id="cooldown-countdown">15:00</strong>
           </div>
-          <div id="guest-ban-inline" class="notice notice-ban hidden"></div>
+          <p id="guest-ban-inline" class="notice notice-ban hidden" aria-live="polite"></p>
         </form>
       </section>
 
@@ -71,8 +73,12 @@
         <div class="section-heading"><h2>Следующие песни</h2><span id="queue-count" class="count-pill">0 песен</span></div>
         <ol id="queue-list" class="queue-list"><li class="empty">Очередь пока пуста. Закажите первую песню!</li></ol>
       </section>
+      <div class="danger-row">
+        <button type="button" id="guest-logout" class="quiet hidden">Выйти</button>
+      </div>
     </div>
-    <footer class="footer muted"><span>KaraLoki · Караоке-вечеринка</span> <button type="button" id="guest-logout" class="quiet compact hidden">Выйти</button> · <a href="admin.html">Панель ведущего</a></footer>
+
+    <footer class="footer muted">KaraLoki · Караоке-вечеринка · <a href="admin.html">Панель ведущего</a></footer>
   </main>
   <script src="js/config.js"></script>
   <script src="js/app.js"></script>
