@@ -4,12 +4,14 @@
  * Device IDs and room codes are no longer used. Google Sheets remains the database.
  * RadioLoki is a shared-name convenience gate, not secure authentication.
  */
-const QUEUE_HEADERS = ["id","song","artist","requester","status","createdAt","position"];
+const QUEUE_HEADERS = ["id","song","artist","requester","status","createdAt","position","requesterToken"];
 const PLAYBACK_HEADERS = ["key","value"];
-const HISTORY_HEADERS = ["id","song","artist","requester","result","playedAt","hidden","entryId"];
+const HISTORY_HEADERS = ["id","song","artist","requester","result","playedAt","hidden","entryId","cleared"];
 const USER_HEADERS = ["name","nameKey","status","cooldownUntil","bannedUntil","createdAt","updatedAt"];
-const SONG_SECONDS = 300;
-const COOLDOWN_SECONDS = 900;
+const DEFAULT_SONG_SECONDS = 300;
+const DEFAULT_COOLDOWN_SECONDS = 900;
+const SONG_SECONDS = DEFAULT_SONG_SECONDS;
+const COOLDOWN_SECONDS = DEFAULT_COOLDOWN_SECONDS;
 const TEMP_BAN_SECONDS = 1800;
 const OWNER_NAME = "RadioLoki";
 
@@ -24,6 +26,8 @@ function setupKaraLoki() {
   ensureSheet_(ss, "History", HISTORY_HEADERS);
   ensureHistoryEntryIds_();
   ensureSheet_(ss, "Users", USER_HEADERS);
+  ensureSheet_(ss, "Settings", ["key","value"]);
+  if (getRows_(ss.getSheetByName("Settings")).length===0) ss.getSheetByName("Settings").getRange(1,1,4,2).setValues([["key","value"],["autoplay","true"],["songSeconds","300"],["cooldownSeconds","900"]]);
   const pb = ss.getSheetByName("Playback");
   if (pb.getLastRow() < 2) pb.getRange(2,1,4,2).setValues([["currentSongId",""],["paused","false"],["startedAt",""],["remainingSeconds",String(SONG_SECONDS)]]);
 }
@@ -46,7 +50,7 @@ function handle_(p) {
     return {ok:true,state:withLock_(() => stateWhileLocked_(true, ""))};
   }
   if (a === "add") return addSong_(p);
-  const adminActions = ["skip","pause","resume","move","remove","play","clearQueue","approveUser","denyUser","liftCooldown","banUser","returnToPending","hideHistory","deleteHistory"];
+  const adminActions = ["skip","pause","resume","move","remove","play","clearQueue","approveUser","denyUser","liftCooldown","banUser","returnToPending","hideHistory","deleteHistory","clearHistory","shuffle","reorder","saveSettings","setEventMode"];
   if (adminActions.indexOf(a) >= 0) {
     requireOwnerName_(p.ownerName);
     return withLock_(() => {
@@ -67,6 +71,11 @@ function handle_(p) {
       if (a === "returnToPending") returnUserToPending_(p.name);
       if (a === "hideHistory") setHistoryHidden_(String(p.historyId || ""), true);
       if (a === "deleteHistory") deleteHistory_(String(p.historyId || ""));
+      if (a === "clearHistory") clearHistory_();
+      if (a === "shuffle") shuffleQueue_();
+      if (a === "reorder") reorderQueue_(String(p.ids || ""));
+      if (a === "saveSettings") saveSettings_(p);
+      if (a === "setEventMode") setEventMode_(String(p.enabled)==="true");
       return {ok:true};
     });
   }
@@ -106,6 +115,7 @@ function addSong_(p) {
   return withLock_(() => {
     const user = admin ? null : findUser_(key), now = Date.now();
     if (!admin) {
+      if (truthy_(getSettings_().eventMode)) throw new Error("Приём заявок временно приостановлен.");
       if (!user || String(user.status) !== "Confirmed") throw new Error("Ваше имя ещё не подтверждено администратором.");
       const bannedUntil = Number(user.bannedUntil || 0);
       if (bannedUntil > now) throw new Error("Заказы временно заблокированы: " + formatSeconds_(Math.ceil((bannedUntil-now)/1000)));
@@ -115,10 +125,11 @@ function addSong_(p) {
     const sh = getSS_().getSheetByName("Queue"), rows = getRows_(sh);
     if (!admin && rows.some(r => nameKey_(r.requester) === key && ["Waiting","Playing"].includes(String(r.status)))) throw new Error("У вас уже есть активный заказ. Дождитесь его исполнения.");
     const id = Utilities.getUuid(), pos = rows.filter(r => r.status === "Waiting").length + 1;
-    sh.appendRow([id,song,artist,requester,"Waiting",new Date(),pos]);
-    if (!admin) updateUser_(key,{cooldownUntil:now + COOLDOWN_SECONDS*1000,updatedAt:new Date()});
+    const token = clean_(p.requesterToken,100);
+    sh.appendRow([id,song,artist,requester,"Waiting",new Date(),pos,token]);
+    if (!admin) updateUser_(key,{cooldownUntil:now + getSettings_().cooldownSeconds*1000,updatedAt:new Date()});
     ensureCurrent_();
-    return {ok:true,message:"Песня добавлена в очередь.",cooldownSeconds:admin?0:COOLDOWN_SECONDS};
+    return {ok:true,message:"Песня добавлена в очередь.",cooldownSeconds:admin?0:getSettings_().cooldownSeconds};
   });
 }
 
@@ -128,17 +139,18 @@ function stateWhileLocked_(admin, guestName) {
   let current = rows.find(r => r.id === pb.currentSongId && r.status === "Playing") || null;
   let remaining = Number(pb.remainingSeconds || SONG_SECONDS);
   if (current && String(pb.paused) !== "true" && pb.startedAt) {
-    remaining = Math.max(0, SONG_SECONDS - Math.floor((Date.now()-new Date(pb.startedAt).getTime())/1000));
-    if (remaining <= 0) { advance_("Completed"); pb=getPlayback_(); rows=getRows_(ss.getSheetByName("Queue")); current=rows.find(r=>r.id===pb.currentSongId&&r.status==="Playing")||null; remaining=current?SONG_SECONDS:0; }
+    remaining = Math.max(0, getSettings_().songSeconds - Math.floor((Date.now()-new Date(pb.startedAt).getTime())/1000));
+    if (remaining <= 0 && getSettings_().autoplay) { advance_("Completed"); pb=getPlayback_(); rows=getRows_(ss.getSheetByName("Queue")); current=rows.find(r=>r.id===pb.currentSongId&&r.status==="Playing")||null; remaining=current?SONG_SECONDS:0; }
   }
   const queue = rows.filter(r => r.status === "Waiting").sort((a,b)=>Number(a.position)-Number(b.position)).map(publicSong_);
   const historyRows = getRows_(ss.getSheetByName("History"));
   const visibleHistory = historyRows.filter(h => !truthy_(h.hidden) && ["Completed","Skipped","Interrupted","Removed","Replayed"].includes(String(h.result)));
-  const history = visibleHistory.slice(-60).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
+  const history = visibleHistory.filter(h=>!truthy_(h.cleared)).slice(-200).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
   const playedHistory = visibleHistory.filter(h => ["Completed","Skipped","Interrupted","Replayed"].includes(String(h.result)));
   const recent = playedHistory.slice(-3).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
   const previous = playedHistory.slice(-2).map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
-  const out = {current:current?publicSong_(current):null,queue,history,recent,previous,paused:String(pb.paused)==="true",remainingSeconds:current?remaining:null};
+  const settings=getSettings_();
+  const out = {current:current?publicSong_(current):null,queue:queue.map((q)=>{const r=rows.find(x=>x.id===q.id);return {...q,requestedAt:r?r.createdAt:null,requesterToken:r?r.requesterToken:""};}),history,recent,previous,paused:String(pb.paused)==="true",remainingSeconds:current?remaining:null,eventMode:settings.eventMode,settings};
   if (admin) {
     out.users = getRows_(ss.getSheetByName("Users")).map(user => ({name:user.name,status:user.status,cooldownRemaining:Math.max(0,Math.ceil((Number(user.cooldownUntil||0)-Date.now())/1000)),banRemaining:Math.max(0,Math.ceil((Number(user.bannedUntil||0)-Date.now())/1000))}));
   } else {
@@ -147,7 +159,7 @@ function stateWhileLocked_(admin, guestName) {
   }
   return out;
 }
-function publicSong_(r) { return {id:r.id,song:r.song,artist:r.artist,requester:r.requester}; }
+function publicSong_(r) { return {id:r.id,song:r.song,artist:r.artist,requester:r.requester,requestedAt:r.createdAt,requesterToken:r.requesterToken||""}; }
 function formatSeconds_(s) { s=Math.max(0,Number(s)||0); return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); }
 
 function approveUser_(name) {
@@ -225,3 +237,11 @@ function truthy_(v){return v===true||String(v).toLowerCase()==="true"||String(v)
 function findUser_(key){if(!key)return null;const rows=getRows_(getSS_().getSheetByName("Users"));return rows.find(r=>String(r.nameKey||nameKey_(r.name))===key)||null;}
 function updateUser_(key,changes){const sh=getSS_().getSheetByName("Users"),v=sh.getDataRange().getValues(),headers=v[0].map(String);for(let i=1;i<v.length;i++){const rowKey=String(v[i][headers.indexOf("nameKey")]||nameKey_(v[i][headers.indexOf("name")]));if(rowKey===key){Object.keys(changes).forEach(k=>{const col=headers.indexOf(k);if(col>=0)sh.getRange(i+1,col+1).setValue(changes[k]);});return;}}throw new Error("Пользователь не найден.");}
 function deleteUser_(key){const sh=getSS_().getSheetByName("Users"),v=sh.getDataRange().getValues(),headers=v[0].map(String),nameCol=headers.indexOf("nameKey"),displayCol=headers.indexOf("name");for(let i=v.length-1;i>=1;i--){const rowKey=String(v[i][nameCol]||nameKey_(v[i][displayCol]));if(rowKey===key){sh.deleteRow(i+1);return;}}}
+
+function getSettings_(){const rows=getRows_(getSS_().getSheetByName("Settings")),o={autoplay:true,songSeconds:300,cooldownSeconds:900,eventMode:false};rows.forEach(r=>{if(r.key==="autoplay")o.autoplay=truthy_(r.value);if(r.key==="songSeconds")o.songSeconds=Math.max(60,Math.min(1800,Number(r.value)||300));if(r.key==="cooldownSeconds")o.cooldownSeconds=Math.max(0,Math.min(7200,Number(r.value)||0));if(r.key==="eventMode")o.eventMode=truthy_(r.value);});return o;}
+function setSetting_(key,value){const sh=getSS_().getSheetByName("Settings"),v=sh.getDataRange().getValues();for(let i=1;i<v.length;i++)if(String(v[i][0])===key){sh.getRange(i+1,2).setValue(value);return;}sh.appendRow([key,value]);}
+function saveSettings_(p){setSetting_("autoplay",String(p.autoplay)==="true");setSetting_("songSeconds",Math.max(60,Math.min(1800,Number(p.songSeconds)||300)));setSetting_("cooldownSeconds",Math.max(0,Math.min(7200,Number(p.cooldownSeconds)||0)));}
+function setEventMode_(enabled){setSetting_("eventMode",enabled);}
+function clearHistory_(){const sh=getSS_().getSheetByName("History"),v=sh.getDataRange().getValues(),headers=v[0].map(String),col=headers.indexOf("cleared");if(col<0)throw new Error("Поле cleared отсутствует. Запустите setupKaraLoki.");if(v.length>1)sh.getRange(2,col+1,v.length-1,1).setValue(true);}
+function shuffleQueue_(){const sh=getSS_().getSheetByName("Queue"),rows=getRows_(sh).filter(r=>r.status==="Waiting").sort((a,b)=>Number(a.position)-Number(b.position));const eligible=rows.slice(3);if(eligible.length<2)throw new Error("Нужно минимум две песни после первых трёх.");for(let i=eligible.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[eligible[i],eligible[j]]=[eligible[j],eligible[i]];}rows.forEach((r,i)=>updatePosition_(r.id,i+1));eligible.forEach((r,i)=>updatePosition_(r.id,i+4));}
+function reorderQueue_(idsJson){const ids=JSON.parse(idsJson);if(!Array.isArray(ids))throw new Error("Некорректный порядок песен.");const rows=getRows_(getSS_().getSheetByName("Queue")).filter(r=>r.status==="Waiting").sort((a,b)=>Number(a.position)-Number(b.position));const fixed=rows.slice(0,3).map(r=>r.id),movable=rows.slice(3).map(r=>r.id);if(ids.length!==movable.length||ids.some(id=>!movable.includes(id)))throw new Error("Список песен изменился. Обновите очередь.");const final=[...fixed,...ids];final.forEach((id,i)=>updatePosition_(id,i+1));}

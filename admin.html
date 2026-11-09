@@ -42,7 +42,9 @@
         </div>
         <nav class="admin-tabs" aria-label="Разделы панели">
           <button class="admin-tab active" type="button" data-tab="queue-tab">Очередь</button>
+          <button class="admin-tab" type="button" data-tab="history-tab">История</button>
           <button class="admin-tab" type="button" data-tab="users-tab">Пользователи <span id="pending-count" class="tab-count">0</span></button>
+          <button class="admin-tab" type="button" data-tab="settings-tab">Настройки</button>
         </nav>
       </section>
 
@@ -52,6 +54,7 @@
           <div class="control-grid">
             <button id="pause-button" class="primary" type="button">Ⅱ Пауза</button>
             <button id="skip-button" class="secondary" type="button">Пропустить ⏭</button>
+            <button id="event-mode-button" class="secondary" type="button">⏸ Event Mode: выкл.</button>
           </div>
           <p id="control-message" class="message" aria-live="polite"></p>
         </section>
@@ -72,19 +75,19 @@
         </section>
 
         <section class="panel">
-          <div class="section-heading"><h2>Последние 3 песни</h2></div>
-          <ol id="recent-list" class="queue-list"><li class="empty">История воспроизведения пока пуста.</li></ol>
-        </section>
-
-        <section class="panel">
-          <div class="section-heading"><h2>Текущая очередь</h2><span id="queue-count" class="count-pill">0 песен</span></div>
+          <div class="section-heading"><h2>Очередь</h2><span id="queue-count" class="count-pill">0 песен</span></div>
           <ol id="queue-list" class="queue-list"><li class="empty">Очередь пуста.</li></ol>
+          <div class="danger-row"><button id="shuffle-button" class="secondary" type="button">⤨ Перемешать после следующих 3</button></div>
           <div class="danger-row"><button id="clear-queue-button" class="danger" type="button">Очистить очередь</button></div>
           <p id="queue-message" class="message" aria-live="polite"></p>
         </section>
 
+      </div>
+
+      <div id="history-tab" class="admin-tab-panel hidden">
         <section class="panel">
           <div class="section-heading"><h2>История песен</h2><span id="history-count" class="count-pill">0</span></div>
+          <button id="clear-history-button" class="quiet compact" type="button">Очистить</button>
           <ol id="history-list" class="queue-list history-list"><li class="empty">История пока пуста.</li></ol>
         </section>
       </div>
@@ -99,6 +102,16 @@
           <div class="section-heading"><h2>Подтверждённые пользователи</h2><span id="confirmed-count" class="count-pill">0</span></div>
           <ol id="confirmed-users-list" class="user-list"><li class="empty">Пока нет подтверждённых пользователей.</li></ol>
           <p id="users-message" class="message" aria-live="polite"></p>
+        </section>
+      </div>
+      <div id="settings-tab" class="admin-tab-panel hidden">
+        <section class="panel">
+          <h2>Настройки мероприятия</h2>
+          <label class="visibility-toggle"><input id="autoplay-setting" type="checkbox" checked> Автоматически запускать следующую песню</label>
+          <label>Длительность песни (секунды)<input id="song-duration-setting" type="number" min="60" max="1800" step="30" value="300"></label>
+          <label>Задержка между заявками (секунды)<input id="cooldown-setting" type="number" min="0" max="7200" step="60" value="900"></label>
+          <button id="save-settings-button" class="primary" type="button">Сохранить настройки</button>
+          <p id="settings-message" class="message" aria-live="polite"></p>
         </section>
       </div>
     </div>

@@ -178,3 +178,18 @@ body{
   .brand{font-size:1.65rem}
   .queue-list#queue-list{max-height:54vh}
 }
+/* v1.7 queue and controls */
+.admin-tabs{grid-template-columns:repeat(4,minmax(0,1fr))}
+.my-request{border:1px solid #e8b85b!important;background:linear-gradient(100deg,rgba(122,77,20,.38),rgba(35,32,48,.8))!important;box-shadow:0 0 14px rgba(232,184,91,.16)}
+.drag-armed{outline:2px dashed #d58bff;opacity:.8}
+.drag-handle{font-size:1.1rem;color:#e2b5ff;background:rgba(130,70,170,.2);border:1px solid rgba(213,139,255,.45)}
+#queue-list{max-height:min(58vh,520px);overflow-y:auto;overscroll-behavior:contain}
+@media(max-width:520px){.admin-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Initial connection screen */
+.startup-loading{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:radial-gradient(ellipse at center,rgba(45,20,65,.96),rgba(7,7,18,.99) 70%);color:#f5eaff;transition:opacity .2s ease,visibility .2s ease}
+.startup-loading.is-hidden{opacity:0;visibility:hidden;pointer-events:none}
+.loading-mark{font-size:clamp(2rem,7vw,3.4rem);font-weight:900;letter-spacing:.04em;text-shadow:0 0 18px rgba(218,85,255,.7),0 0 28px rgba(65,235,190,.35)}
+.loading-spinner{width:34px;height:34px;border:3px solid rgba(255,255,255,.18);border-top-color:#dc8cff;border-right-color:#61e6c0;border-radius:50%;animation:kl-spin .8s linear infinite}
+.loading-text{font-size:.95rem;color:#c9bed8}
+@keyframes kl-spin{to{transform:rotate(360deg)}}
