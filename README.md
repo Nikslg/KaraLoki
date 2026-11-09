@@ -1,4 +1,4 @@
-# KaraLoki v1.8.3 — очередь караоке и панель ведущего
+# KaraLoki v1.8.4 — очередь караоке и панель ведущего
 
 KaraLoki — веб-приложение для очереди песен. Сайт размещается на GitHub Pages, данные хранятся в Google Sheets, серверная логика работает через Google Apps Script.
 
@@ -125,3 +125,17 @@ KaraLoki — веб-приложение для очереди песен. Са�
 - Добавлен экран загрузки при переходе между гостевой и административной страницами.
 
 **Важно:** после обновления фронтенда обязательно замените `Code.gs` и разверните новую версию Apps Script. Старый `/exec` URL остаётся тем же.
+
+
+## v1.8.4 — Instant playback controls and unified Admin layout
+
+- Pause, Resume, Skip and Event Mode now update the Admin interface optimistically before the Apps Script request completes. A compact pending notification remains visible during the background save; on failure the previous state is restored and an error is shown.
+- Pause freezes the locally calculated remaining time immediately. Resume restarts from the preserved remaining time. Skip immediately previews the next queued song while the backend confirms the transition.
+- Admin tabs remain at the top. Playback controls are integrated directly beneath them in the same unified Admin panel; the separate adjacent playback card is removed.
+- Pause and Resume share one toggle button; only the action appropriate to the current state is shown. Skip and the existing Event Mode control remain available.
+- Admin «Выйти» remains in the top-right heading position, matching the Guest panel's account-action placement.
+- Guest «Изменить имя» is grouped directly under the displayed guest name and «Выйти» control.
+- «Добро пожаловать [имя]» is displayed in the Guest connection/loading overlay instead of inside the request panel.
+- Guest Tracklist and song-request panels use an explicit shared 16px layout gap, matching Admin section spacing.
+
+**Deployment:** back up the existing Google Sheet, replace `Code.gs` in the existing Apps Script project with the included file, deploy a new web-app version, then replace the GitHub Pages files with this archive. Keep the existing spreadsheet and `/exec` endpoint.

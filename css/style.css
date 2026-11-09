@@ -242,3 +242,15 @@ body{
 #public-content > .panel + .panel{margin-top:16px}
 
 .guest-heading-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+
+/* v1.8.4 unified Admin workspace and Guest layout corrections */
+.admin-workspace{display:grid;gap:16px}
+.admin-workspace .admin-tabs{margin:0}
+.playback-controls-section{border-top:1px solid rgba(126,91,190,.38);padding-top:15px}
+.playback-controls-section .control-grid{margin-top:12px}
+#public-content{display:grid;gap:16px}
+#public-content > .panel + .panel{margin-top:0}
+.guest-heading-actions{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.guest-heading-actions .count-pill{white-space:nowrap}
+@media(max-width:520px){.admin-workspace{gap:13px}.playback-controls-section{padding-top:12px}.guest-heading-actions{gap:5px}}

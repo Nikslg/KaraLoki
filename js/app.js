@@ -1,4 +1,5 @@
 (() => {
+  // KaraLoki v1.8.4 — guest client.
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
@@ -91,22 +92,24 @@
       banUntil=Date.now()+Math.max(0,Number(result.banRemaining)||0)*1000;showOnly("guest-banned-panel");
       $("guest-ban-message").textContent=`Доступ временно ограничен ещё на ${time(result.banRemaining)}.`;
     }else{
+      const overlay=$("startup-loading"),loadingText=$("startup-loading-text");
+      if(overlay&&loadingText){loadingText.textContent=`Добро пожаловать ${guestName}`;overlay.classList.remove("is-hidden");}
       showOnly("public-content");$("confirmed-guest-name").textContent=guestName;
-      msg("welcome-message",`Добро пожаловать ${guestName}`);
       await refresh(true);
+      if(overlay){loadingText.textContent="Подключаемся к очереди…";overlay.classList.add("is-hidden");}
     }
   }
   async function changeGuestName(){
     const next=prompt("Введите новое имя:",guestName);if(next===null)return;const clean=next.trim().replace(/\s+/g," ");if(clean.length<2)return msg("guest-login-message","Введите имя длиной не менее двух символов.",true);
     if(clean===guestName)return;const buttonIds=["pending-rename","confirmed-rename"];buttonIds.forEach(id=>{const b=$(id);if(b)b.disabled=true;});
-    try{await api("renameGuest",{oldName:guestName,newName:clean});guestName=clean;localStorage.setItem(NAME_KEY,guestName);if(lastState?.guest){lastState.guest.name=guestName;}$("pending-name").textContent=guestName;$("confirmed-guest-name").textContent=guestName;msg("pending-message","Имя изменено.");msg("welcome-message","Имя изменено.");await refresh(true);}
-    catch(err){msg("pending-message",err.message,true);msg("welcome-message",err.message,true);}
+    try{await api("renameGuest",{oldName:guestName,newName:clean});guestName=clean;localStorage.setItem(NAME_KEY,guestName);if(lastState?.guest){lastState.guest.name=guestName;}$("pending-name").textContent=guestName;$("confirmed-guest-name").textContent=guestName;msg("pending-message","Имя изменено.");await refresh(true);}
+    catch(err){msg("pending-message",err.message,true);}
     finally{buttonIds.forEach(id=>{const b=$(id);if(b)b.disabled=false;});}
   }
   ["pending-rename","confirmed-rename"].forEach(id=>$(id)?.addEventListener("click",changeGuestName));
   function logout(){
     guestName="";localStorage.removeItem(NAME_KEY);cooldownUntil=0;banUntil=0;lastState=null;
-    $("guest-name-input").value="";msg("guest-login-message","");msg("pending-message","");msg("welcome-message","");msg("request-message","");
+    $("guest-name-input").value="";msg("guest-login-message","");msg("pending-message","");msg("request-message","");
     showOnly("guest-login-panel");
   }
 

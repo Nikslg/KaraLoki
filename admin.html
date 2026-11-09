@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#090914">
-  <title>KaraLoki — Панель ведущего</title>
+  <title>KaraLoki v1.8.4 — Панель ведущего</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -37,7 +37,7 @@
 
     <div id="admin-loading" class="admin-loading hidden" role="status" aria-live="polite"><span class="loading-spinner"></span><span id="admin-loading-text">Выполняем действие…</span></div>
     <div id="admin-content" class="hidden">
-      <section class="panel">
+      <section class="panel admin-workspace">
         <div class="section-heading">
           <h2>Панель ведущего</h2>
           <button id="lock-button" class="quiet compact" type="button">Выйти</button>
@@ -48,10 +48,7 @@
           <button class="admin-tab" type="button" data-tab="users-tab">Пользователи <span id="pending-count" class="tab-count">0</span></button>
           <button class="admin-tab" type="button" data-tab="settings-tab">Настройки</button>
         </nav>
-      </section>
-
-      <div id="queue-tab" class="admin-tab-panel">
-        <section class="panel">
+        <div class="playback-controls-section">
           <h2>Управление воспроизведением</h2>
           <div class="control-grid">
             <button id="pause-button" class="primary" type="button">Ⅱ Пауза</button>
@@ -59,7 +56,10 @@
             <button id="event-mode-button" class="secondary" type="button">⏸ Режим: выкл.</button>
           </div>
           <p id="control-message" class="message" aria-live="polite"></p>
-        </section>
+        </div>
+      </section>
+
+      <div id="queue-tab" class="admin-tab-panel">
 
         <section class="panel">
           <h2>Заказать песню</h2>
