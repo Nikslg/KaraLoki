@@ -1,14 +1,17 @@
-# KaraLoki v1.8.5 — очередь караоке и панель ведущего
+# KaraLoki v1.8.5.1 — очередь караоке и панель ведущего
 
 KaraLoki — веб-приложение для очереди песен. Сайт размещается на GitHub Pages, данные хранятся в Google Sheets, серверная логика работает через Google Apps Script.
 
-## Изменения v1.8.5
+## Изменения v1.8.5.1
 
-- Playback actions (Пауза/Продолжить/Пропустить/Режим) update the Admin client immediately and are sent to Apps Script sequentially in click order, allowing rapid consecutive Pause/Resume actions.
-- Admin navigation remains in its own top panel. Playback controls are available only on the Queue tab and share one panel with the Admin song-request form. The Admin tab panels have consistent vertical gaps, matching the Guest-side panel spacing.
-- Admin tab panels use consistent vertical spacing, matching the Guest panel's card separation.
-- Guest account actions are ordered «Изменить имя» then «Выйти», with the exit action below the rename action.
-- Version labels and file descriptions updated to v1.8.5.
+- Исправлен жизненный цикл JSONP callback в Guest и Admin: после клиентского тайм-аута callback остаётся безопасно доступным для позднего ответа Apps Script, поэтому поздний ответ не вызывает `kl_admin_cb_* is not defined` / аналогичную ошибку гостевой страницы.
+- Тайм-аут запроса увеличен до 45 секунд; поздний callback очищается после ответа или по ограниченному сроку ожидания.
+- Первичная загрузка и обновление состояния используют один запрос одновременно; повторные запросы не накапливаются.
+- При проблемах загрузки применяется повтор с увеличивающейся задержкой (до 30 секунд). После успешной загрузки обычное обновление остаётся каждые 5 секунд.
+- Переключатель приёма заказов получил понятные подписи: «Выключить заказы» / «Включить заказы». Он использует ту же оптимистичную очередь действий, что и Пауза/Продолжить: интерфейс меняется сразу, сохранение выполняется последовательно, при ошибке состояние сверяется с сервером.
+- Настройки мероприятия выровнены, добавлены промежутки между элементами и адаптивное поведение кнопки сохранения.
+- На странице гостя имя, «Сменить имя» и «Выход» остаются в заданном порядке в одной строке на широком экране; на узком экране элементы могут переноситься.
+- Существующая Google-таблица и структура данных не меняются. Обновление `Code.gs` нужно только для согласованности версии; логика backend не изменена.
 
 
 KaraLoki — веб-приложение для очереди песен. Сайт размещается на GitHub Pages, данные хранятся в Google Sheets, серверная логика работает через Google Apps Script.

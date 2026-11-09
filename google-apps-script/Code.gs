@@ -1,5 +1,5 @@
 /**
- * KaraLoki v1.8.5 — Google Apps Script backend.
+ * KaraLoki v1.8.5.1 — Google Apps Script backend.
  * Guest identity is the approved display name (case-insensitive matching).
  * Device IDs and room codes are no longer used. Google Sheets remains the database.
  * RadioLoki is a shared-name convenience gate, not secure authentication.

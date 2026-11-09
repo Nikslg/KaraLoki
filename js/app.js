@@ -1,20 +1,22 @@
 (() => {
-  // KaraLoki v1.8.5 — guest client.
+  // KaraLoki v1.8.5.1 — guest client.
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
   let guestName = localStorage.getItem(NAME_KEY) || "";
   let lastState = null, countdownTarget = null, countdownPaused = false, initialLoadDone = false, serverOffsetMs = 0;
-  let cooldownUntil = 0, banUntil = 0, busy = false, refreshBusy = false, zeroRefreshRequested = false, playbackTransitionBusy = false;
+  let cooldownUntil = 0, banUntil = 0, busy = false, refreshBusy = false, refreshPromise = null, nextRefreshAt = 0, retryDelay = 2000, zeroRefreshRequested = false, playbackTransitionBusy = false;
 
   function api(action, params = {}) {
     if (!cfg.API_URL || cfg.API_URL.includes("PASTE_YOUR")) return Promise.reject(new Error("Сначала укажите URL Apps Script в файле js/config.js."));
     return new Promise((resolve,reject) => {
-      const callback = "kl_cb_" + Math.random().toString(36).slice(2), query = new URLSearchParams({action,callback,...params});
-      const script = document.createElement("script"), timeout = setTimeout(() => finish(new Error("Сервер не ответил. Попробуйте ещё раз.")),15000);
-      function finish(err,data){clearTimeout(timeout);delete window[callback];script.remove();err?reject(err):resolve(data);}
-      window[callback] = data => data && data.ok ? finish(null,data) : finish(new Error(data?.error || "Не удалось выполнить запрос."));
-      script.onerror = () => finish(new Error("Не удалось связаться с сервером. Проверьте URL Apps Script."));
+      const callback = "kl_cb_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2), query = new URLSearchParams({action,callback,...params});
+      const script = document.createElement("script"); let settled=false,cleaned=false,graceTimer=null;
+      const cleanup=()=>{if(cleaned)return;cleaned=true;clearTimeout(timeout);clearTimeout(graceTimer);delete window[callback];script.remove();};
+      const finish=(err,data)=>{if(settled){cleanup();return;}settled=true;clearTimeout(timeout);err?reject(err):resolve(data);if(err){graceTimer=setTimeout(cleanup,120000);}else cleanup();};
+      const timeout=setTimeout(()=>finish(new Error("Сервер отвечает слишком долго. Попробуйте ещё раз.")),45000);
+      window[callback] = data => {if(settled){cleanup();return;}data&&data.ok?finish(null,data):finish(new Error(data?.error || "Не удалось выполнить запрос."));};
+      script.onerror = () => {if(!settled)finish(new Error("Не удалось связаться с сервером. Проверьте URL Apps Script."));else cleanup();};
       script.src = cfg.API_URL + (cfg.API_URL.includes("?")?"&":"?") + query.toString(); document.body.appendChild(script);
     });
   }
@@ -80,8 +82,13 @@
     $("request-button").disabled=busy||cooldown>0||ban>0;
   }
   async function refresh(force=false){
-    if(refreshBusy){if(!force)return;while(refreshBusy)await new Promise(resolve=>setTimeout(resolve,40));}
-    refreshBusy=true;try{const result=await api("state",{guestName});if(!playbackTransitionBusy)render(result.state);}catch(e){if(!lastState){const overlay=$("startup-loading");if(overlay){overlay.classList.remove("is-hidden");const t=$("startup-loading-text");if(t)t.textContent="Не удалось загрузить очередь. Повторяем подключение…";}msg("guest-login-message","Пока нет ответа от сервера. Проверяем соединение повторно…");} }finally{refreshBusy=false;}
+    if(refreshPromise)return refreshPromise;
+    if(!force&&Date.now()<nextRefreshAt)return;
+    refreshBusy=true;
+    refreshPromise=(async()=>{try{const result=await api("state",{guestName});if(!result||!result.state)throw new Error("Сервер вернул неполные данные.");retryDelay=2000;nextRefreshAt=0;if(!playbackTransitionBusy)render(result.state);}
+      catch(e){nextRefreshAt=Date.now()+retryDelay;retryDelay=Math.min(30000,retryDelay*2);if(!lastState){const overlay=$("startup-loading");if(overlay){overlay.classList.remove("is-hidden");const t=$("startup-loading-text");if(t)t.textContent="Не удалось загрузить очередь. Повторяем подключение…";}msg("guest-login-message","Пока нет ответа от сервера. Проверяем соединение повторно…");}}
+      finally{refreshBusy=false;refreshPromise=null;}})();
+    return refreshPromise;
   }
   async function login(name){
     const result=await api("guestLogin",{name});guestName=result.name||name;localStorage.setItem(NAME_KEY,guestName);

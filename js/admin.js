@@ -1,11 +1,26 @@
 (() => {
-  // KaraLoki v1.8.5 — admin client.
+  // KaraLoki v1.8.5.1 — admin client.
   "use strict";
   const cfg=window.KARALOKI_CONFIG||{},$=id=>document.getElementById(id),OWNER_NAME="RadioLoki",ADMIN_KEY="karaloki_admin_unlocked";
-  let ownerName=sessionStorage.getItem(ADMIN_KEY)==="1"?OWNER_NAME:"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,refreshBusy=false,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false;
+  let ownerName=sessionStorage.getItem(ADMIN_KEY)==="1"?OWNER_NAME:"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,refreshBusy=false,refreshPromise=null,nextRefreshAt=0,retryDelay=2000,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false;
   const playbackActionQueue=[]; let playbackQueueRunning=false,playbackConfirmedState=null,lastConfirmedPlaybackState=null;
   const rowLocks=new Set(); let pendingOps=0,optimisticOps=0;
-  function api(action,params={}){if(!cfg.API_URL||cfg.API_URL.includes("PASTE_YOUR"))return Promise.reject(new Error("Сначала укажите URL Apps Script в js/config.js."));return new Promise((resolve,reject)=>{const callback="kl_admin_cb_"+Math.random().toString(36).slice(2),query=new URLSearchParams({action,callback,...params}),script=document.createElement("script"),timeout=setTimeout(()=>finish(new Error("Сервер не ответил.")),15000);function finish(err,data){clearTimeout(timeout);delete window[callback];script.remove();err?reject(err):resolve(data);}window[callback]=data=>data&&data.ok?finish(null,data):finish(new Error(data?.error||"Не удалось выполнить запрос."));script.onerror=()=>finish(new Error("Не удалось связаться с Apps Script."));script.src=cfg.API_URL+(cfg.API_URL.includes("?")?"&":"?")+query.toString();document.body.appendChild(script);});}
+  // JSONP callbacks remain callable after a client timeout: Apps Script may still
+  // return late, and deleting the global function early causes kl_admin_cb_* errors.
+  function api(action,params={}){
+    if(!cfg.API_URL||cfg.API_URL.includes("PASTE_YOUR"))return Promise.reject(new Error("Сначала укажите URL Apps Script в js/config.js."));
+    return new Promise((resolve,reject)=>{
+      const callback="kl_admin_cb_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2);
+      const query=new URLSearchParams({action,callback,...params}),script=document.createElement("script");
+      let settled=false,cleaned=false,graceTimer=null;
+      const cleanup=()=>{if(cleaned)return;cleaned=true;clearTimeout(timeout);clearTimeout(graceTimer);delete window[callback];script.remove();};
+      const finish=(err,data)=>{if(settled){cleanup();return;}settled=true;clearTimeout(timeout);err?reject(err):resolve(data);if(err){graceTimer=setTimeout(cleanup,120000);}else cleanup();};
+      const timeout=setTimeout(()=>finish(new Error("Сервер отвечает слишком долго. Повторите попытку.")),45000);
+      window[callback]=data=>{if(settled){cleanup();return;}if(data&&data.ok)finish(null,data);else finish(new Error(data?.error||"Не удалось выполнить запрос."));};
+      script.onerror=()=>{if(!settled)finish(new Error("Не удалось связаться с Apps Script."));else cleanup();};
+      script.src=cfg.API_URL+(cfg.API_URL.includes("?")?"&":"?")+query.toString();document.body.appendChild(script);
+    });
+  }
   function time(s){s=Math.max(0,Math.floor(Number(s)||0));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
   function label(item){return item.artist?`${item.song} — ${item.artist}`:item.song;}
   function normalizeName(value){return String(value||"").trim().replace(/\s+/g," ").toLocaleLowerCase();}
@@ -125,10 +140,19 @@
     $("pause-button").textContent=state.paused?"▶ Продолжить":"Ⅱ Пауза";
     renderCombinedQueue(state);renderSongList("history-list",state.history||[],"history");
     const settings=state.settings||{};$("autoplay-setting").checked=settings.autoplay!==false;if(document.activeElement!==$("song-duration-setting"))$("song-duration-setting").value=secondsToClock(settings.songSeconds||300);$("cooldown-setting").value=settings.cooldownSeconds??900;
-    $("event-mode-button").textContent=state.eventMode?"▶ Режим: вкл.":"⏸ Режим: выкл.";$("event-mode-button").classList.toggle("danger",!!state.eventMode);
+    $("event-mode-button").textContent=state.eventMode?"Включить заказы":"Выключить заказы";$("event-mode-button").classList.toggle("danger",!state.eventMode);$("event-mode-button").setAttribute("aria-pressed",String(!state.eventMode));
     $("queue-count").textContent=`${(state.queue||[]).length} песен`;$("shuffle-button").disabled=Math.max(0,(state.queue||[]).length-3)<2;$("history-count").textContent=String((state.history||[]).length);renderUsers(state.users||[]);
   }
-  async function refresh(force=false){if(!ownerName||queueDragActive)return;if(refreshBusy){if(!force)return;while(refreshBusy)await new Promise(resolve=>setTimeout(resolve,40));}refreshBusy=true;try{const result=await api("state",{ownerName});if(!queueDragActive&&optimisticOps===0&&!playbackActionBusy)render(result.state);}catch(e){if(!lastState){message("control-message",e.message,true);const t=$("startup-loading")?.querySelector(".loading-text");if(t)t.textContent="Не удалось загрузить данные. Повторяем подключение…";}}finally{refreshBusy=false;}}
+  async function refresh(force=false){
+    if(!ownerName||queueDragActive)return;
+    if(refreshPromise)return refreshPromise;
+    if(!force&&Date.now()<nextRefreshAt)return;
+    refreshBusy=true;
+    refreshPromise=(async()=>{try{const result=await api("state",{ownerName});if(!result||!result.state)throw new Error("Сервер вернул неполные данные.");retryDelay=2000;nextRefreshAt=0;if(!queueDragActive&&optimisticOps===0&&!playbackActionBusy)render(result.state);}
+      catch(e){nextRefreshAt=Date.now()+retryDelay;retryDelay=Math.min(30000,retryDelay*2);if(!lastState){message("control-message",e.message,true);const t=$("startup-loading")?.querySelector(".loading-text");if(t)t.textContent="Не удалось загрузить данные. Повторяем подключение…";}}
+      finally{refreshBusy=false;refreshPromise=null;}})();
+    return refreshPromise;
+  }
   const pendingText={skip:"Пропускаем песню... ожидайте",pause:"Приостанавливаем воспроизведение... ожидайте",resume:"Возобновляем воспроизведение... ожидайте",play:"Запускаем выбранную песню... ожидайте",clearQueue:"Очищаем очередь... ожидайте",add:"Добавляем песню в очередь... ожидайте",remove:"Удаляем песню... ожидайте",move:"Обновляем порядок очереди... ожидайте",approveUser:"Подтверждаем пользователя... ожидайте",denyUser:"Отклоняем пользователя... ожидайте",liftCooldown:"Снимаем ожидание... ожидайте",banUser:"Применяем временную блокировку... ожидайте",returnToPending:"Возвращаем пользователя на подтверждение... ожидайте",hideHistory:"Скрываем запись истории... ожидайте",deleteHistory:"Удаляем запись истории... ожидайте"};
   const successText={clearHistory:"История отмечена как очищенная. Записи сохранены в таблице.",shuffle:"Очередь перемешана после первых трёх песен.",reorder:"Порядок очереди обновлён.",saveSettings:"Настройки сохранены.",setEventMode:"Режим мероприятия обновлён.",skip:"Песня пропущена.",pause:"Воспроизведение приостановлено.",resume:"Воспроизведение продолжено.",play:"Песня запущена.",clearQueue:"Очередь очищена. Ожидание затронутых гостей снято.",add:"Песня добавлена в очередь.",remove:"Песня удалена, ожидание заказчика снято.",move:"Порядок очереди обновлён.",approveUser:"Пользователь подтверждён.",denyUser:"Заявка отклонена.",liftCooldown:"Ожидание снято.",banUser:"Заказы заблокированы на 30 минут.",returnToPending:"Пользователь возвращён в список ожидающих подтверждения.",hideHistory:"Запись скрыта.",deleteHistory:"Запись удалена из истории."};
   function actionMessageId(action){if(["pause","resume","skip"].includes(action))return "control-message";if(["approveUser","denyUser","liftCooldown","banUser","returnToPending"].includes(action))return "users-message";return "queue-message";}

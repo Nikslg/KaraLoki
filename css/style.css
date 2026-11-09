@@ -265,3 +265,18 @@ body{
 .admin-request-workspace .playback-controls-section{border-top:0;padding-top:0}
 .admin-request-section{border-top:1px solid var(--border);padding-top:18px}
 @media(max-width:520px){#admin-content{gap:12px}.admin-request-workspace{gap:15px}.admin-request-section{padding-top:15px}}
+
+
+/* v1.8.5.1 hotfix: aligned guest account controls and event settings */
+.guest-heading-actions{display:flex;flex-direction:row;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:nowrap}
+.guest-heading-actions .count-pill{white-space:nowrap;min-height:38px;display:inline-flex;align-items:center}
+.guest-heading-actions button{min-height:38px;white-space:nowrap}
+#settings-tab .panel{display:grid;gap:14px}
+#settings-tab .panel>label{margin:0}
+#settings-tab #save-settings-button{justify-self:start;min-height:42px;margin-top:2px;padding-inline:18px}
+#event-mode-button{min-height:58px;padding:10px 14px;white-space:normal}
+@media(max-width:520px){
+ .guest-heading-actions{gap:6px;flex-wrap:wrap}
+ .guest-heading-actions .count-pill,.guest-heading-actions button{min-height:36px}
+ #settings-tab #save-settings-button{width:100%;justify-self:stretch}
+}
