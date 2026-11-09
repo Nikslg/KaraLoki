@@ -280,3 +280,6 @@ body{
  .guest-heading-actions .count-pill,.guest-heading-actions button{min-height:36px}
  #settings-tab #save-settings-button{width:100%;justify-self:stretch}
 }
+#confirmed-guest-name {
+  margin-left: 4px;
+}
