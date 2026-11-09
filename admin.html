@@ -1,56 +1,83 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#10151d">
-  <title>KaraLoki — Host Controls</title>
+  <title>KaraLoki — Панель ведущего</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="site-header">
     <div class="brand">KaraLoki <span class="admin-brand">HOST</span></div>
     <div class="now-playing">
-      <div class="eyebrow">CURRENT SONG</div>
-      <div id="current-song" class="current-title">Nothing is playing yet</div>
-      <div id="current-requester" class="muted">No active request</div>
-      <div class="timer-line"><span id="playback-state" class="status-pill">Waiting</span><span id="countdown" class="countdown">—</span></div>
+      <div class="eyebrow">СЕЙЧАС ИСПОЛНЯЕТСЯ</div>
+      <div id="current-song" class="current-title">Пока ничего не играет</div>
+      <div id="current-requester" class="muted">Нет активного заказа</div>
+      <div class="timer-line"><span id="playback-state" class="status-pill">Ожидание</span><span id="countdown" class="countdown">—</span></div>
     </div>
   </header>
 
   <main class="page admin-page">
     <section class="panel" id="login-panel">
-      <h2>Host access</h2>
-      <p class="muted small">Enter the reserved owner name to open the controls.</p>
+      <h2>Вход в панель управления</h2>
       <form id="admin-login-form">
-        <label>Owner name
-          <input id="owner-name" maxlength="32" autocomplete="username" placeholder="Enter owner name" required>
+        <label for="owner-name">Данные для входа
+          <input id="owner-name" type="password" maxlength="64" autocomplete="current-password" placeholder="Введите данные для входа" required>
         </label>
-        <button class="primary" type="submit" id="login-button">Open host controls</button>
+        <button class="primary" type="submit" id="login-button">Войти</button>
         <p id="login-message" class="message" aria-live="polite"></p>
       </form>
-      <p class="small muted">The owner name is <strong>RadioLoki</strong>. This is a shared-name convenience gate, not secure authentication.</p>
     </section>
 
     <div id="admin-content" class="hidden">
       <section class="panel">
-        <div class="section-heading"><h2>Playback controls</h2><button id="lock-button" class="quiet compact" type="button">Lock</button></div>
-        <div class="control-grid">
-          <button id="back-button" class="secondary" type="button">⏮ Back</button>
-          <button id="pause-button" class="primary" type="button">Ⅱ Pause</button>
-          <button id="forward-button" class="secondary" type="button">⏭ Forward</button>
-        </div>
-        <p id="control-message" class="message" aria-live="polite"></p>
-        <p class="small muted">Back restores the most recently completed or skipped song. Forward skips the current song.</p>
+        <div class="section-heading"><h2>Код комнаты</h2><button id="lock-button" class="quiet compact" type="button">Заблокировать</button></div>
+        <div class="room-code-row"><strong id="daily-room-code" class="room-code">----</strong><button id="copy-room-code" class="secondary compact" type="button">Копировать</button></div>
+        <p class="small muted">Код действует до 18:00 по московскому времени. После этого автоматически создаётся новый.</p>
       </section>
 
       <section class="panel">
-        <div class="section-heading"><h2>Manage queue</h2><span id="queue-count" class="count-pill">0 songs</span></div>
-        <ol id="queue-list" class="queue-list"><li class="empty">The queue is empty.</li></ol>
-        <p class="small muted">Use the arrows to change a song's position or remove an unwanted request.</p>
+        <h2>Управление воспроизведением</h2>
+        <div class="control-grid">
+          <button id="pause-button" class="primary" type="button">Ⅱ Пауза</button>
+          <button id="skip-button" class="secondary" type="button">Пропустить ⏭</button>
+        </div>
+        <p id="control-message" class="message" aria-live="polite"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Заказать песню от ведущего</h2>
+        <form id="admin-request-form">
+          <div class="field-row">
+            <label>Название песни
+              <input id="admin-song-input" maxlength="140" placeholder="Название песни" required>
+            </label>
+            <label>Исполнитель
+              <input id="admin-artist-input" maxlength="100" placeholder="Исполнитель (необязательно)">
+            </label>
+          </div>
+          <label>Заказчик
+            <input value="RadioLoki" readonly>
+          </label>
+          <button class="primary" id="admin-request-button" type="submit">Добавить в очередь</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading"><h2>Очередь</h2><span id="queue-count" class="count-pill">0 песен</span></div>
+        <ol id="queue-list" class="queue-list"><li class="empty">Очередь пуста.</li></ol>
+        <div class="danger-row"><button id="clear-queue-button" class="danger" type="button">Очистить очередь</button></div>
+        <p class="small muted">Кнопка очистки удаляет из активной очереди только ожидающие песни. Лист History в Google Sheets сохраняется.</p>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading"><h2>История песен</h2><span id="history-count" class="count-pill">0</span></div>
+        <ol id="history-list" class="queue-list history-list"><li class="empty">История пока пуста.</li></ol>
+        <p class="small muted">Нажмите ▶, чтобы немедленно запустить песню из истории.</p>
       </section>
     </div>
-    <footer class="footer muted"><a href="index.html">← Back to public queue</a></footer>
+    <footer class="footer muted"><a href="index.html">← К публичной очереди</a></footer>
   </main>
   <script src="js/config.js"></script>
   <script src="js/admin.js"></script>

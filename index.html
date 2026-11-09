@@ -1,44 +1,66 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#10151d">
-  <title>KaraLoki — Public Queue</title>
+  <title>KaraLoki — Очередь караоке</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="site-header">
     <div class="brand">KaraLoki</div>
     <div class="now-playing">
-      <div class="eyebrow">CURRENT SONG</div>
-      <div id="current-song" class="current-title">Nothing is playing yet</div>
-      <div id="current-requester" class="muted">Be the first to request a song</div>
-      <div class="timer-line"><span id="playback-state" class="status-pill">Waiting</span><span id="countdown" class="countdown">—</span></div>
+      <div class="eyebrow">СЕЙЧАС ИСПОЛНЯЕТСЯ</div>
+      <div id="current-song" class="current-title">Пока ничего не играет</div>
+      <div id="current-requester" class="muted">Будьте первым, кто закажет песню</div>
+      <div class="timer-line"><span id="playback-state" class="status-pill">Ожидание</span><span id="countdown" class="countdown">—</span></div>
     </div>
   </header>
 
   <main class="page">
-    <section class="panel request-panel">
-      <h2>Request a song</h2>
-      <form id="request-form">
-        <label>Song name – Artist
-          <input id="song-input" name="song" maxlength="140" placeholder="e.g. Take On Me – a-ha" required>
-        </label>
-        <label>Requester name
-          <input id="requester-input" name="requester" maxlength="32" placeholder="Your name or nickname" required>
-        </label>
-        <button type="submit" id="request-button" class="primary">Add to queue</button>
-        <p id="request-message" class="message" aria-live="polite"></p>
+    <section class="panel" id="room-gate">
+      <h2>Вход в комнату</h2>
+      <p class="muted small">Введите четырёхзначный код комнаты, который можно получить у ведущего.</p>
+      <form id="room-form">
+        <label for="room-code">Код комнаты</label>
+        <input id="room-code" inputmode="numeric" autocomplete="one-time-code" maxlength="4" pattern="[0-9]{4}" placeholder="0000" required>
+        <button type="submit" class="primary" id="room-button">Войти</button>
+        <p id="room-message" class="message" aria-live="polite"></p>
       </form>
-      <p class="small muted">One active request per browser/device. You can request again after your song leaves the queue.</p>
     </section>
 
-    <section class="panel">
-      <div class="section-heading"><h2>Upcoming songs</h2><span id="queue-count" class="count-pill">0 songs</span></div>
-      <ol id="queue-list" class="queue-list"><li class="empty">The queue is empty. Add the first song!</li></ol>
-    </section>
-    <footer class="footer muted">KaraLoki · Party queue · <a href="admin.html">Host controls</a></footer>
+    <div id="public-content" class="hidden">
+      <section class="panel request-panel">
+        <h2>Заказать песню</h2>
+        <form id="request-form">
+          <div class="field-row">
+            <label>Название песни
+              <input id="song-input" name="song" maxlength="140" placeholder="Например: Take On Me" required>
+            </label>
+            <label>Исполнитель
+              <input id="artist-input" name="artist" maxlength="100" placeholder="Например: a-ha">
+            </label>
+          </div>
+          <label>Ваше имя
+            <input id="requester-input" name="requester" maxlength="32" placeholder="Имя или никнейм" autocomplete="nickname" required>
+          </label>
+          <button type="submit" id="request-button" class="primary">Добавить в очередь</button>
+          <p id="request-message" class="message" aria-live="polite"></p>
+          <div id="cooldown-box" class="cooldown hidden" aria-live="polite">
+            <div>Пожалуйста подождите перед заказом следующей песни</div>
+            <strong id="cooldown-countdown">15:00</strong>
+          </div>
+        </form>
+        <p class="small muted">Один активный заказ на устройство. После успешного заказа действует пауза 15 минут.</p>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading"><h2>Следующие песни</h2><span id="queue-count" class="count-pill">0 песен</span></div>
+        <ol id="queue-list" class="queue-list"><li class="empty">Очередь пока пуста. Закажите первую песню!</li></ol>
+      </section>
+    </div>
+    <footer class="footer muted">KaraLoki · Караоке-вечеринка · <a href="admin.html">Панель ведущего</a></footer>
   </main>
   <script src="js/config.js"></script>
   <script src="js/app.js"></script>
