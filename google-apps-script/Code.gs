@@ -1,5 +1,5 @@
 /**
- * KaraLoki v1.5 — Google Apps Script backend.
+ * KaraLoki v1.6 — Google Apps Script backend.
  * Guest identity is the approved display name (case-insensitive matching).
  * Device IDs and room codes are no longer used. Google Sheets remains the database.
  * RadioLoki is a shared-name convenience gate, not secure authentication.
@@ -55,7 +55,10 @@ function handle_(p) {
       if (a === "resume") resume_();
       if (a === "move") moveQueueItem_(String(p.songId || ""), String(p.direction || ""));
       if (a === "remove") removeQueueItem_(String(p.songId || ""));
-      if (a === "play") playSong_(String(p.songId || ""));
+      if (a === "play") {
+        if (String(p.source || "") === "history") queueHistorySongNext_(String(p.songId || ""));
+        else playSong_(String(p.songId || ""));
+      }
       if (a === "clearQueue") clearQueue_();
       if (a === "approveUser") approveUser_(p.name);
       if (a === "denyUser") denyUser_(p.name);
@@ -132,9 +135,10 @@ function stateWhileLocked_(admin, guestName) {
   const historyRows = getRows_(ss.getSheetByName("History"));
   const visibleHistory = historyRows.filter(h => !truthy_(h.hidden) && ["Completed","Skipped","Interrupted","Removed","Replayed"].includes(String(h.result)));
   const history = visibleHistory.slice(-60).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
-  const recent = visibleHistory.filter(h => ["Completed","Skipped","Interrupted","Replayed"].includes(String(h.result)))
-    .slice(-3).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
-  const out = {current:current?publicSong_(current):null,queue,history,recent,paused:String(pb.paused)==="true",remainingSeconds:current?remaining:null};
+  const playedHistory = visibleHistory.filter(h => ["Completed","Skipped","Interrupted","Replayed"].includes(String(h.result)));
+  const recent = playedHistory.slice(-3).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
+  const previous = playedHistory.slice(-2).map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
+  const out = {current:current?publicSong_(current):null,queue,history,recent,previous,paused:String(pb.paused)==="true",remainingSeconds:current?remaining:null};
   if (admin) {
     out.users = getRows_(ss.getSheetByName("Users")).map(user => ({name:user.name,status:user.status,cooldownRemaining:Math.max(0,Math.ceil((Number(user.cooldownUntil||0)-Date.now())/1000)),banRemaining:Math.max(0,Math.ceil((Number(user.bannedUntil||0)-Date.now())/1000))}));
   } else {
@@ -171,12 +175,24 @@ function advance_(result) {
   setPlayback_({currentSongId:"",paused:"false",startedAt:"",remainingSeconds:String(SONG_SECONDS)});ensureCurrent_();renumberQueue_();
 }
 function playSong_(id) {
-  const ss=getSS_(),sh=ss.getSheetByName("Queue"),rows=getRows_(sh),target=rows.find(r=>r.id===id&&["Waiting","Completed","Skipped","Interrupted"].includes(r.status));
+  const ss=getSS_(),sh=ss.getSheetByName("Queue"),rows=getRows_(sh),target=rows.find(r=>r.id===id&&["Waiting","Completed","Skipped","Interrupted","Removed"].includes(r.status));
   if(!target)throw new Error("Эта песня больше недоступна для запуска.");
   const pb=getPlayback_();if(pb.currentSongId===id&&target.status==="Playing")return;
   if(pb.currentSongId){const cur=rows.find(r=>r.id===pb.currentSongId&&r.status==="Playing");if(cur){appendHistory_(cur,"Interrupted");updateQueueStatus_(cur.id,"Interrupted");}}
-  if(["Completed","Skipped","Interrupted"].includes(target.status))setLatestHistoryResult_(id,"Replayed");
+  if(["Completed","Skipped","Interrupted","Removed"].includes(target.status))setLatestHistoryResult_(id,"Replayed");
   updateQueueStatus_(id,"Playing");setPlayback_({currentSongId:id,paused:"false",startedAt:new Date().toISOString(),remainingSeconds:String(SONG_SECONDS)});renumberQueue_();
+}
+
+function queueHistorySongNext_(id) {
+  const sh=getSS_().getSheetByName("Queue"), rows=getRows_(sh);
+  const target=rows.find(r=>r.id===id&&["Completed","Skipped","Interrupted","Removed","Replayed"].includes(String(r.status)));
+  if(!target)throw new Error("Эта запись больше недоступна для добавления в очередь.");
+  const waiting=rows.filter(r=>r.status==="Waiting").sort((a,b)=>Number(a.position)-Number(b.position));
+  // Shift waiting songs down, then put the selected history song first.
+  waiting.slice().reverse().forEach(r=>updatePosition_(r.id,Number(r.position)+1));
+  updateQueueStatus_(id,"Waiting");
+  updatePosition_(id,1);
+  renumberQueue_();
 }
 function clearQueue_() {
   const sh=getSS_().getSheetByName("Queue"), rows=getRows_(sh), affected={};

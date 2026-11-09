@@ -18,7 +18,7 @@
       const song=document.createElement("div");song.className="queue-song";song.textContent=label(item);
       const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=`${item.requester||"—"}${item.result?" · "+historyStatus(item.result):""}`;
       body.append(song,requester);const actions=document.createElement("div");actions.className="queue-actions";
-      if(mode==="queue"||(mode==="history"&&item.result!=="Removed"))actions.append(makeButton("▶","Воспроизвести сейчас",()=>adminAction("play",{songId:item.id})));
+      if(mode==="queue"||mode==="history")actions.append(makeButton("▶",mode==="history"?"Добавить следующей после текущей":"Воспроизвести сейчас",()=>adminAction("play",{songId:item.id,...(mode==="history"?{source:"history"}:{})})));
       if(mode==="queue"){
         const up=makeButton("↑","Переместить выше",()=>adminAction("move",{songId:item.id,direction:"up"}));up.disabled=i===0;
         const down=makeButton("↓","Переместить ниже",()=>adminAction("move",{songId:item.id,direction:"down"}));down.disabled=i===items.length-1;
@@ -56,7 +56,7 @@
       const actions=document.createElement("div");actions.className="user-actions";
       const allow=makeButton("⏱","Снять ожидание",()=>adminAction("liftCooldown",{name:user.name}),"allow-square");allow.disabled=user.cooldownRemaining<=0;
       const hammer=makeButton("🔨","Ограничить доступ",()=>{if(confirm(`Заблокировать заказы для «${user.name}» на 30 минут?`))adminAction("banUser",{name:user.name});},"ban-square");
-      const restrict=makeButton("Ø","Вернуть на подтверждение",()=>{if(confirm(`Вернуть «${user.name}» в список ожидающих подтверждения? Пользователь потеряет доступ к заказу песен до повторного одобрения.`))adminAction("returnToPending",{name:user.name});},"deny-square");
+      const restrict=makeButton("🚫","Вернуть на подтверждение",()=>{if(confirm(`Вернуть «${user.name}» в список ожидающих подтверждения? Пользователь потеряет доступ к заказу песен до повторного одобрения.`))adminAction("returnToPending",{name:user.name});},"deny-square");
       actions.append(allow,hammer,restrict);row.append(labelEl,value,spacer,actions);li.append(name,row);list.appendChild(li);
     });
   }
@@ -78,7 +78,7 @@
   async function adminAction(action,params={}){
     if(busy)return;busy=true;const target=actionMessageId(action),buttons=Array.from($("admin-content").querySelectorAll("button"));
     buttons.forEach(b=>b.disabled=true);message(target,pendingText[action]||"Выполняем действие...");
-    try{await api(action,{ownerName,...params});await refresh(true);message(target,successText[action]||"Изменения сохранены.");}
+    try{await api(action,{ownerName,...params});await refresh(true);const success=action==="play"&&params.source==="history"?"Песня добавлена следующей после текущей.":(successText[action]||"Изменения сохранены.");message(target,success);}
     catch(e){message(target,e.message,true);}
     finally{busy=false;buttons.forEach(b=>{if(b.isConnected)b.disabled=false;});if(lastState)$("pause-button").textContent=lastState.paused?"▶ Продолжить":"Ⅱ Пауза";}
   }
@@ -88,7 +88,7 @@
   $("show-owner-name").addEventListener("change",()=>{$("owner-name").type=$("show-owner-name").checked?"text":"password";});
   $("admin-login-form").addEventListener("submit",async e=>{e.preventDefault();const entered=$("owner-name").value.trim();$("login-button").disabled=true;$("login-button").classList.add("is-loading");message("login-message","Проверяем данные для входа... ожидайте");try{await api("adminCheck",{ownerName:entered});ownerName=OWNER_NAME;sessionStorage.setItem(ADMIN_KEY,"1");unlocked(true);$("owner-name").value="";switchTab("queue-tab");await refresh();}catch(_){message("login-message","Не удалось выполнить вход. Проверьте данные и попробуйте снова.",true);}finally{$("login-button").disabled=false;$("login-button").classList.remove("is-loading");}});
   $("lock-button").addEventListener("click",()=>{ownerName="";sessionStorage.removeItem(ADMIN_KEY);lastState=null;unlocked(false);$("owner-name").value="";});
-  $("skip-button").addEventListener("click",()=>{if(confirm("Пропустить текущую песню и включить следующую?"))adminAction("skip");});
+  $("skip-button").addEventListener("click",()=>adminAction("skip"));
   $("pause-button").addEventListener("click",()=>adminAction(lastState?.paused?"resume":"pause"));
   $("clear-queue-button").addEventListener("click",()=>{if(confirm("Очистить все ожидающие песни? Ожидание затронутых гостей будет снято. История сохранится."))adminAction("clearQueue");});
   $("admin-request-form").addEventListener("submit",async e=>{e.preventDefault();const song=$("admin-song-input").value.trim(),artist=$("admin-artist-input").value.trim();if(!song)return;await adminAction("add",{song,artist,requester:OWNER_NAME,ownerName});$("admin-song-input").value="";$("admin-artist-input").value="";});

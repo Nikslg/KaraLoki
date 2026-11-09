@@ -101,3 +101,80 @@ button.is-loading{opacity:.78;cursor:progress}
  .cooldown-row{gap:6px}.cooldown-label{font-size:.72rem}.cooldown-value{min-width:48px;font-size:.82rem}
  .icon-button.square-action{width:36px;height:36px;min-width:36px}
 }
+
+/* v1.5: compact square user controls and recent playback list */
+.icon-button.square-action{width:40px;height:40px;min-width:40px;border-radius:5px}
+.icon-button.restrict-square{background:#48252d;color:#ff9ca8;border-color:#85414d;font-size:1rem}
+#recent-list .queue-item{padding:9px 12px}
+#recent-list .queue-number{min-width:8px}
+@media(max-width:520px){.icon-button.square-action{width:36px;height:36px;min-width:36px}}
+
+
+/* v1.6 visual refresh: horned microphone background, responsive dark overlays */
+body{
+  min-height:100vh;
+  background-color:#080913;
+  background-image:
+    linear-gradient(180deg,rgba(7,8,18,.42) 0%,rgba(7,8,18,.66) 42%,rgba(7,8,18,.92) 100%),
+    url("../assets/karaloki-background.png");
+  background-repeat:no-repeat;
+  background-position:center top;
+  background-size:cover;
+  background-attachment:fixed;
+}
+.site-header{
+  background:rgba(8,9,20,.82);
+  border-bottom:1px solid rgba(126,91,190,.38);
+  box-shadow:0 8px 28px rgba(0,0,0,.28);
+  backdrop-filter:blur(16px);
+}
+.brand{
+  color:#eadcff;
+  text-shadow:0 0 16px rgba(178,111,255,.36);
+}
+.panel{
+  background:rgba(15,18,32,.88);
+  border-color:rgba(116,102,157,.42);
+  box-shadow:0 12px 34px rgba(0,0,0,.22);
+  backdrop-filter:blur(12px);
+}
+.queue-list#queue-list{
+  max-height:min(58vh,520px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(178,111,255,.62) rgba(14,16,29,.55);
+  padding-right:5px;
+}
+#queue-list::-webkit-scrollbar{width:8px}
+#queue-list::-webkit-scrollbar-track{background:rgba(14,16,29,.55);border-radius:10px}
+#queue-list::-webkit-scrollbar-thumb{background:rgba(178,111,255,.62);border-radius:10px}
+.public-queue-item.previous{opacity:.72;background:rgba(30,31,50,.72)}
+.public-queue-item.current{
+  background:linear-gradient(100deg,rgba(113,39,135,.46),rgba(16,75,80,.48));
+  border:1px solid rgba(73,226,202,.72);
+  box-shadow:0 0 18px rgba(50,210,194,.13),inset 0 0 18px rgba(184,72,255,.08);
+}
+.public-queue-item.current .queue-song{font-size:1.02rem}
+.current-queue-marker{
+  display:inline-block;
+  margin-bottom:4px;
+  color:#70efd0;
+  font-size:.62rem;
+  font-weight:850;
+  letter-spacing:.13em;
+}
+.public-queue-item.upcoming .queue-number{color:#d58bff}
+@media(max-width:520px){
+  body{
+    background-size:auto 55vh;
+    background-position:center top;
+    background-attachment:fixed;
+    background-image:
+      linear-gradient(180deg,rgba(7,8,18,.32) 0%,rgba(7,8,18,.72) 34%,rgba(7,8,18,.96) 68%),
+      url("../assets/karaloki-background.png");
+  }
+  .site-header{background:rgba(8,9,20,.86)}
+  .brand{font-size:1.65rem}
+  .queue-list#queue-list{max-height:54vh}
+}

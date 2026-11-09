@@ -21,7 +21,28 @@
   function time(s){s=Math.max(0,Math.floor(Number(s)||0));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
   function songLabel(item){return item.artist?`${item.song} — ${item.artist}`:item.song;}
   function showOnly(id){["guest-login-panel","guest-pending-panel","guest-banned-panel","public-content"].forEach(x=>$(x).classList.toggle("hidden",x!==id));$("guest-logout").classList.toggle("hidden",id!=="public-content");}
-  function renderQueue(items){const list=$("queue-list");list.replaceChildren();$("queue-count").textContent=`${items.length} ${items.length===1?"песня":"песен"}`;if(!items.length){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пока пуста. Закажите первую песню!";list.appendChild(li);return;}items.forEach((item,i)=>{const li=document.createElement("li");li.className="queue-item";const num=document.createElement("span");num.className="queue-number";num.textContent=String(i+1).padStart(2,"0");const body=document.createElement("div");body.className="queue-item-body";const song=document.createElement("div");song.className="queue-song";song.textContent=songLabel(item);const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=`Заказал(а): ${item.requester}`;body.append(song,requester);li.append(num,body);list.appendChild(li);});}
+  function renderQueue(state){
+    const list=$("queue-list"),upcoming=state.queue||[],previous=state.previous||[],current=state.current;
+    list.replaceChildren();
+    $("queue-count").textContent=`${upcoming.length} ${upcoming.length===1?"песня":"песен"}`;
+    const entries=[
+      ...previous.map(item=>({item,kind:"previous",number:""})),
+      ...(current?[{item:current,kind:"current",number:""}]:[]),
+      ...upcoming.map((item,i)=>({item,kind:"upcoming",number:String(i+1).padStart(2,"0")}))
+    ];
+    if(!entries.length){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пока пуста. Закажите первую песню!";list.appendChild(li);return;}
+    entries.forEach(({item,kind,number})=>{
+      const li=document.createElement("li");li.className=`queue-item public-queue-item ${kind}`;
+      if(kind==="current")li.setAttribute("aria-current","true");
+      const num=document.createElement("span");num.className="queue-number";num.textContent=number;
+      const body=document.createElement("div");body.className="queue-item-body";
+      const song=document.createElement("div");song.className="queue-song";song.textContent=songLabel(item);
+      const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=`Заказал(а): ${item.requester||"—"}`;
+      if(kind==="current"){const marker=document.createElement("span");marker.className="current-queue-marker";marker.textContent="СЕЙЧАС ИГРАЕТ";body.append(marker,song,requester);}
+      else body.append(song,requester);
+      li.append(num,body);list.appendChild(li);
+    });
+  }
   function render(state){
     lastState=state;const current=state.current;
     $("current-song").textContent=current?songLabel(current):"Пока ничего не играет";
@@ -29,7 +50,7 @@
     $("playback-state").textContent=state.paused?"Пауза":(current?"Играет":"Ожидание");
     countdownPaused=!!state.paused;countdownTarget=current&&!countdownPaused?Date.now()+Math.max(0,Number(state.remainingSeconds)||0)*1000:null;
     $("countdown").textContent=current?time(state.remainingSeconds):"—";$("countdown").classList.toggle("paused",countdownPaused);
-    renderQueue(state.queue||[]);
+    renderQueue(state);
     if(guestName&&state.guest){
       const g=state.guest;
       if(g.status==="Confirmed"){
