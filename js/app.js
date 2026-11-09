@@ -96,6 +96,14 @@
       await refresh(true);
     }
   }
+  async function changeGuestName(){
+    const next=prompt("Введите новое имя:",guestName);if(next===null)return;const clean=next.trim().replace(/\s+/g," ");if(clean.length<2)return msg("guest-login-message","Введите имя длиной не менее двух символов.",true);
+    if(clean===guestName)return;const buttonIds=["pending-rename","confirmed-rename"];buttonIds.forEach(id=>{const b=$(id);if(b)b.disabled=true;});
+    try{await api("renameGuest",{oldName:guestName,newName:clean});guestName=clean;localStorage.setItem(NAME_KEY,guestName);if(lastState?.guest){lastState.guest.name=guestName;}$("pending-name").textContent=guestName;$("confirmed-guest-name").textContent=guestName;msg("pending-message","Имя изменено.");msg("welcome-message","Имя изменено.");await refresh(true);}
+    catch(err){msg("pending-message",err.message,true);msg("welcome-message",err.message,true);}
+    finally{buttonIds.forEach(id=>{const b=$(id);if(b)b.disabled=false;});}
+  }
+  ["pending-rename","confirmed-rename"].forEach(id=>$(id)?.addEventListener("click",changeGuestName));
   function logout(){
     guestName="";localStorage.removeItem(NAME_KEY);cooldownUntil=0;banUntil=0;lastState=null;
     $("guest-name-input").value="";msg("guest-login-message","");msg("pending-message","");msg("welcome-message","");msg("request-message","");

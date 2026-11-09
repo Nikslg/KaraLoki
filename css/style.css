@@ -225,3 +225,15 @@ body{
 #queue-list.is-reordering{user-select:none}
 #queue-list .upcoming[draggable="true"]{cursor:grabbing}
 @media(max-width:520px){.queue-actions .icon-button{width:30px;height:32px;min-width:30px}.queue-actions{gap:2px}.queue-footer-actions{gap:7px}}
+
+/* v1.8.2 responsive admin feedback and compact confirmed users */
+.admin-loading{position:fixed;z-index:1000;top:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:10px 15px;border:1px solid rgba(120,225,205,.45);border-radius:12px;background:rgba(15,22,32,.96);box-shadow:0 8px 28px rgba(0,0,0,.38);color:var(--text);font-size:.86rem;max-width:calc(100vw - 24px)}
+.admin-loading .loading-spinner{width:19px;height:19px;flex:0 0 19px;border-width:2px}
+#confirmed-users-list{max-height:min(42vh,330px);overflow-y:auto;overscroll-behavior:contain;padding-right:5px;scrollbar-width:thin}
+.confirmed-entry{padding:8px 10px}.confirmed-entry .user-name{margin-bottom:5px}.confirmed-entry .cooldown-row{gap:6px}.confirmed-entry .icon-button.square-action{width:32px;height:32px;min-width:32px;font-size:.95rem}
+.rename-square{background:rgba(80,110,155,.2);color:#b9d7ff;border-color:#536d91}
+.is-pending-action{opacity:.55;pointer-events:none}
+.queue-footer-actions{justify-content:flex-end}
+.shuffle-icon-button{width:40px;height:40px;min-width:40px;padding:0}
+.shuffle-icon-button svg{width:20px;height:20px}
+@media(max-width:520px){.confirmed-entry .icon-button.square-action{width:29px;height:30px;min-width:29px}.admin-loading{top:8px;font-size:.78rem}}

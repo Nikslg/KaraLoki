@@ -1,4 +1,4 @@
-# KaraLoki v1.8.1 — очередь караоке и панель ведущего
+# KaraLoki v1.8.2 — очередь караоке и панель ведущего
 
 KaraLoki — веб-приложение для очереди песен. Сайт размещается на GitHub Pages, данные хранятся в Google Sheets, серверная логика работает через Google Apps Script.
 
@@ -97,3 +97,17 @@ KaraLoki — веб-приложение для очереди песен. Са�
 - `Users` — имя, нормализованный ключ, статус, окончание ожидания, окончание временной блокировки и даты создания/обновления.
 
 Очистка очереди меняет статус ожидающих строк на `Cleared`, не удаляя их из листа `Queue` и не очищая `History`.
+
+
+## v1.8.2 — Admin responsiveness and guest name changes
+
+- Pending-user approvals now update the list immediately and run independently, so multiple guests can be approved without waiting for each other. Failed approvals restore the row and show the server error.
+- Queue up/down controls update optimistically and reconcile with the Google Sheets backend. Drag-and-drop remains available.
+- History playback buttons remain locked while the server processes the request.
+- Added a compact admin loading indicator for server-backed actions.
+- Added guest name changes on both pending and confirmed guest screens, plus admin rename controls. Rename preserves the user's approval state, cooldown, ban state, and updates requester names in queue/history. Names remain unique case-insensitively.
+- Confirmed-user list is more compact and scrollable; shuffle and clear controls remain right-aligned with a consistent SVG icon.
+
+**Deployment:** back up the existing Google Sheet, replace `Code.gs` in the existing Apps Script project, deploy a new web-app version, and keep the same `/exec` URL in `js/config.js`. Then replace the GitHub Pages project files with this archive. Do not run setup against a new spreadsheet.
+
+**Identity limitation:** KaraLoki uses guest display names as identities rather than passwords or device tokens. Name changes therefore preserve the existing name-based identity model and should not be treated as secure account authentication.

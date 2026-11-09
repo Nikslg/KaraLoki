@@ -1,5 +1,5 @@
 /**
- * KaraLoki v1.7.5 — Google Apps Script backend.
+ * KaraLoki v1.8.2 — Google Apps Script backend.
  * Guest identity is the approved display name (case-insensitive matching).
  * Device IDs and room codes are no longer used. Google Sheets remains the database.
  * RadioLoki is a shared-name convenience gate, not secure authentication.
@@ -48,6 +48,7 @@ function handle_(p) {
     return {ok:true,state:withLock_(() => stateWhileLocked_(true, ""))};
   }
   if (a === "add") return addSong_(p);
+  if (a === "renameGuest") return withLock_(() => { renameGuest_(p.oldName,p.newName); return {ok:true}; });
   const adminActions = ["skip","pause","resume","move","remove","play","clearQueue","approveUser","denyUser","liftCooldown","banUser","returnToPending","hideHistory","deleteHistory","clearHistory","shuffle","reorder","saveSettings","setEventMode"];
   if (adminActions.indexOf(a) >= 0) {
     requireOwnerName_(p.ownerName);
@@ -169,6 +170,23 @@ function denyUser_(name) {
 function liftCooldown_(name) { const key=nameKey_(name), user=findUser_(key); if(!user) throw new Error("Пользователь не найден."); updateUser_(key,{cooldownUntil:0,updatedAt:new Date()}); }
 function banUser_(name) { const key=nameKey_(name), user=findUser_(key); if(!user||String(user.status)!=="Confirmed") throw new Error("Подтверждённый пользователь не найден."); updateUser_(key,{bannedUntil:Date.now()+TEMP_BAN_SECONDS*1000,updatedAt:new Date()}); }
 function returnUserToPending_(name) { const key=nameKey_(name), user=findUser_(key); if(!user||String(user.status)!=="Confirmed") throw new Error("Подтверждённый пользователь не найден."); updateUser_(key,{status:"Pending",updatedAt:new Date()}); }
+
+
+function renameGuest_(oldName,newName){
+  const oldKey=nameKey_(oldName), name=clean_(newName,32), newKey=nameKey_(name);
+  if(!oldKey||!name||newKey.length<2)throw new Error("Введите имя длиной не менее двух символов.");
+  if(newKey===nameKey_(OWNER_NAME))throw new Error("Это имя зарезервировано для ведущего.");
+  const sh=getSS_().getSheetByName("Users"),rows=getRows_(sh),user=rows.find(r=>String(r.nameKey||nameKey_(r.name))===oldKey);
+  if(!user)throw new Error("Пользователь не найден.");
+  if(rows.some(r=>String(r.nameKey||nameKey_(r.name))===newKey && String(r.nameKey||nameKey_(r.name))!==oldKey))throw new Error("Это имя уже занято. Выберите другое.");
+  const values=sh.getDataRange().getValues(),headers=values[0].map(String),rowIndex=values.findIndex((r,i)=>i>0&&String(r[headers.indexOf("nameKey")]||nameKey_(r[headers.indexOf("name")]))===oldKey);
+  if(rowIndex<1)throw new Error("Пользователь не найден.");
+  sh.getRange(rowIndex+1,headers.indexOf("name")+1).setValue(name);sh.getRange(rowIndex+1,headers.indexOf("nameKey")+1).setValue(newKey);sh.getRange(rowIndex+1,headers.indexOf("updatedAt")+1).setValue(new Date());
+  const q=getSS_().getSheetByName("Queue"),qv=q.getDataRange().getValues(),qh=qv[0].map(String),requesterCol=qh.indexOf("requester");
+  for(let i=1;i<qv.length;i++)if(nameKey_(qv[i][requesterCol])===oldKey)q.getRange(i+1,requesterCol+1).setValue(name);
+  const h=getSS_().getSheetByName("History"),hv=h.getDataRange().getValues(),hh=hv[0].map(String),hr=hh.indexOf("requester");
+  for(let i=1;i<hv.length;i++)if(nameKey_(hv[i][hr])===oldKey)h.getRange(i+1,hr+1).setValue(name);
+}
 
 function ensureCurrent_() {
   const pb=getPlayback_(), rows=getRows_(getSS_().getSheetByName("Queue"));
