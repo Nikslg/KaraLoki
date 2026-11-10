@@ -1,8 +1,8 @@
-# KaraLoki v1.8.7 — очередь караоке и панель ведущего
+# KaraLoki v1.8.7.2.2 — очередь караоке и панель ведущего
 
 KaraLoki — веб-приложение для очереди песен. Сайт размещается на GitHub Pages, данные хранятся в Google Sheets, серверная логика работает через Google Apps Script.
 
-## Изменения v1.8.7 — активные сессии
+## Изменения v1.8.7.2.2 — активные сессии
 
 - Добавлена привязка активной сессии к подтверждённому имени пользователя через уникальный серверный токен.
 - Гостевая страница отправляет heartbeat примерно каждые 30 секунд, пока она открыта.
@@ -160,3 +160,15 @@ KaraLoki — веб-приложение для очереди песен. Са�
 - Guest Tracklist and song-request panels use an explicit shared 16px layout gap, matching Admin section spacing.
 
 **Deployment:** back up the existing Google Sheet, replace `Code.gs` in the existing Apps Script project with the included file, deploy a new web-app version, then replace the GitHub Pages files with this archive. Keep the existing spreadsheet and `/exec` endpoint.
+
+
+## v1.8.7.2 update notes
+
+- Improves same-browser session recovery using a persistent browser installation ID, so a returning browser can recover its existing session token when local session-token storage was lost. This remains a convenience mechanism, not secure device authentication.
+- Fixes the Admin Force Logout action request and keeps logout actions in a per-user sequential queue with inline feedback in the affected user card.
+- Adds a persistent last-login timestamp to the Sessions sheet; `setupKaraLoki()` adds the new `lastLogin` column without deleting existing rows.
+- Shows login time and abbreviated Device ID in both pending and confirmed user entries.
+- Reworks confirmed-user information into a horizontal row: device/login details on the left, cooldown centred, and the five existing actions on the right.
+- Makes pending name requests more compact, adds an internal scrollbar, and enlarges Approve/Reject buttons.
+- Rejecting a pending name request no longer asks for a second confirmation.
+- Does not implement the planned Owner PIN/session security overhaul. The existing `RadioLoki` name-based Admin gate remains and is not secure.

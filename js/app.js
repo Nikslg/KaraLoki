@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.8.7 — guest client.
+  // KaraLoki v1.8.7.2 — guest client.
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
@@ -92,7 +92,7 @@
         if(guestName&&result.state.guest?.status==="Confirmed"&&!sessionToken){
           const claim=await api("guestLogin",{name:guestName,clientInfo:clientInfo()});
           if(claim.status==="confirmed"&&claim.sessionToken){sessionToken=claim.sessionToken;localStorage.setItem(SESSION_KEY,sessionToken);}
-          else if(claim.status==="sessionOccupied"){showOnly("guest-session-occupied-panel");$("session-occupied-message").textContent=`Имя «${guestName}» используется на другом устройстве.`;return;}
+          else if(claim.status==="sessionOccupied"){showOnly("guest-session-occupied-panel");$("session-occupied-message").textContent=`Имя «${guestName}» используется на другом устройстве. Вы можете запросить передачу сессии или выбрать другое имя.`;$("startup-loading")?.classList.add("is-hidden");return;}
         }
         render(result.state);
       }}
@@ -143,7 +143,13 @@
     finally{busy=false;$("guest-login-button").disabled=false;}
   });
   ["pending-logout","banned-logout","guest-logout"].forEach(id=>$(id).addEventListener("click",logout));
-  function clientInfo(){return `${navigator.userAgent.includes("Windows")?"Windows":navigator.userAgent.includes("Mac")?"macOS":navigator.userAgent.includes("Android")?"Android":navigator.userAgent.includes("iPhone")?"iPhone":"Browser"} · ${navigator.userAgent.includes("Edg/")?"Edge":navigator.userAgent.includes("Chrome/")?"Chrome":navigator.userAgent.includes("Firefox/")?"Firefox":navigator.userAgent.includes("Safari/")?"Safari":"Browser"}`;}
+  function clientInfo(){
+    const platform=navigator.userAgent.includes("Windows")?"Windows":navigator.userAgent.includes("Mac")?"macOS":navigator.userAgent.includes("Android")?"Android":navigator.userAgent.includes("iPhone")?"iPhone":"Browser";
+    const browser=navigator.userAgent.includes("Edg/")?"Edge":navigator.userAgent.includes("Chrome/")?"Chrome":navigator.userAgent.includes("Firefox/")?"Firefox":navigator.userAgent.includes("Safari/")?"Safari":"Browser";
+    const deviceKey="karaloki_device_id";let deviceId=localStorage.getItem(deviceKey);
+    if(!deviceId){deviceId=(window.crypto&&window.crypto.randomUUID)?window.crypto.randomUUID():("kl-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2));localStorage.setItem(deviceKey,deviceId);}
+    return `${platform} · ${browser} · device:${deviceId}`;
+  }
   $("request-session-transfer")?.addEventListener("click",async()=>{try{const r=await api("requestSessionTransfer",{name:guestName,clientInfo:clientInfo()});if(r.status==="Available"){sessionToken="";await login(guestName);return;}transferRequestId=r.requestId;$("transfer-request-message").textContent="Запрос отправлен. Ожидаем решения текущего пользователя или администратора…";if(transferStatusTimer)clearInterval(transferStatusTimer);transferStatusTimer=setInterval(async()=>{try{const x=await api("transferStatus",{name:guestName});if(x.status==="Approved"){clearInterval(transferStatusTimer);transferStatusTimer=null;sessionToken="";await login(guestName);}else if(x.status==="Rejected"||x.status==="Expired"){clearInterval(transferStatusTimer);transferStatusTimer=null;$("transfer-request-message").textContent="Запрос отклонён или истёк.";}}catch(_){}},5000);}catch(e){msg("transfer-request-message",e.message,true);}});
   $("occupied-cancel")?.addEventListener("click",()=>{guestName="";localStorage.removeItem(NAME_KEY);showOnly("guest-login-panel");});
   async function answerTransfer(decision){try{await api("respondTransfer",{name:guestName,sessionToken,requestId:transferRequestId,decision});$("session-transfer-notice").classList.add("hidden");if(decision==="approve"){logout();msg("guest-login-message","Сессия передана другому устройству.");}}catch(e){msg("request-message",e.message,true);}}
