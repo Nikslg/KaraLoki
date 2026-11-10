@@ -1,10 +1,13 @@
-# KaraLoki v1.9.0
+# KaraLoki v1.9.2
 
 KaraLoki karaoke queue. The Public Queue and Admin interface remain hosted on GitHub Pages. Google Apps Script remains the backend and Google Sheets remains the database.
 
 ## What's included
 - Original v1.8.7.2 project structure and Admin controls retained on GitHub Pages.
-- v1.8.8 interaction improvements carried into the guest transfer flow: immediate pending feedback, duplicate-request prevention, three-minute countdown, expiry/rejection feedback, and disabled transfer decision buttons while the server processes the response.
+- Session-transfer / guest-side "allow login" workflow removed. A username already in use remains occupied until its session expires after one hour of inactivity or an Admin force-logs it out.
+- Admin online presence retained: green for heartbeat within 90 seconds, yellow for inactive but still within the one-hour session window, red for expired or revoked sessions.
+- Guest heartbeat runs every 30 seconds only while the page is visible. It stops when the page becomes hidden and sends an immediate heartbeat when the page becomes visible again.
+- Existing `SessionTransfers` sheet, if present, is left untouched for historical records; the application no longer reads or writes it.
 - Exact guest greeting: `Добро пожаловать, $user$!`.
 - Admin username and four-digit PIN are read from the private `Admin` sheet. No fixed Admin username is embedded in the frontend or backend source.
 - PIN login uses a one-time challenge-response. The PIN itself is not sent in the JSONP URL. On first successful login, the backend replaces the plaintext four-digit PIN with a salted SHA-256 verifier.
@@ -33,3 +36,11 @@ In the private `Admin` sheet, replace the `pin` cell with exactly four digits. O
 
 ## Validation
 JavaScript and Apps Script syntax checks were run on the packaged source. This is not a live integration test: the actual spreadsheet, Apps Script deployment permissions, and GitHub Pages configuration must be verified in your environment.
+
+
+## v1.9.2 UI updates
+- Confirmed and pending user cards now share the same username and metadata alignment, font sizing, line spacing, and left indentation.
+- Admin user labels are localized: `Cooldown` is now `Ожидание`; `Device` is now `Устройство`.
+- Cooldown and action controls are vertically centred within the confirmed-user information row.
+- Routine playback and queue actions use their local section feedback instead of also displaying the global floating loading notification. The global notification remains for Admin login/navigation loading.
+- Public song submission now hides the song and artist fields while the request is in progress, disables the submit button, and uses a client-side duplicate-submission guard. Fields return after completion; on failure, entered values are preserved for retry.

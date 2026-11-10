@@ -4,7 +4,7 @@
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
   let guestName = localStorage.getItem(NAME_KEY) || "";
-  const SESSION_KEY="karaloki_guest_session";let sessionToken=localStorage.getItem(SESSION_KEY)||"",transferRequestId="",transferStatusTimer=null;
+  const SESSION_KEY="karaloki_guest_session";let sessionToken=localStorage.getItem(SESSION_KEY)||"",heartbeatTimer=null;
   let lastState = null, countdownTarget = null, countdownPaused = false, initialLoadDone = false, serverOffsetMs = 0;
   let cooldownUntil = 0, banUntil = 0, busy = false, refreshBusy = false, refreshPromise = null, nextRefreshAt = 0, retryDelay = 2000, zeroRefreshRequested = false, playbackTransitionBusy = false;
 
@@ -102,11 +102,12 @@
   }
   async function login(name){
     const result=await api("guestLogin",{name,sessionToken,clientInfo:clientInfo()});
-    if(result.status==="sessionOccupied"){sessionToken="";localStorage.removeItem(SESSION_KEY);guestName=result.name||name;localStorage.setItem(NAME_KEY,guestName);showOnly("guest-session-occupied-panel");$("session-occupied-message").textContent=`Имя «${guestName}» используется на другом устройстве. Запрос можно отправить текущему пользователю.`;return;}
+    if(result.status==="sessionOccupied"){stopHeartbeat();sessionToken="";localStorage.removeItem(SESSION_KEY);guestName=result.name||name;localStorage.setItem(NAME_KEY,guestName);showOnly("guest-session-occupied-panel");$("session-occupied-message").textContent=`Имя «${guestName}» уже используется на другом устройстве. Повторный вход будет доступен после завершения сессии или выхода через администратора.`;return;}
     guestName=result.name||name;localStorage.setItem(NAME_KEY,guestName);
     if(result.sessionToken){sessionToken=result.sessionToken;localStorage.setItem(SESSION_KEY,sessionToken);}
+    if(result.status==="confirmed"&&sessionToken)startHeartbeat();
     if(result.status==="pending"){
-      sessionToken="";localStorage.removeItem(SESSION_KEY);
+      stopHeartbeat();sessionToken="";localStorage.removeItem(SESSION_KEY);
       showOnly("guest-pending-panel");$("pending-name").textContent=guestName;
       msg("pending-message",result.isNew?"Запрос отправлен. Ожидайте подтверждения Администратора.":"Ожидайте подтверждения Администратора.");
     }else if(result.status==="banned"){
@@ -128,7 +129,7 @@
     finally{buttonIds.forEach(id=>{const b=$(id);if(b)b.disabled=false;});}
   }
   ["pending-rename","confirmed-rename"].forEach(id=>$(id)?.addEventListener("click",changeGuestName));
-  function logout(){
+  function logout(){stopHeartbeat();
     if(guestName&&sessionToken)api("releaseSession",{name:guestName,sessionToken}).catch(()=>{});
     guestName="";sessionToken="";localStorage.removeItem(SESSION_KEY);localStorage.removeItem(NAME_KEY);cooldownUntil=0;banUntil=0;lastState=null;
     $("guest-name-input").value="";msg("guest-login-message","");msg("pending-message","");msg("request-message","");
@@ -150,20 +151,56 @@
     if(!deviceId){deviceId=(window.crypto&&window.crypto.randomUUID)?window.crypto.randomUUID():("kl-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2));localStorage.setItem(deviceKey,deviceId);}
     return `${platform} · ${browser} · device:${deviceId}`;
   }
-  $("request-session-transfer")?.addEventListener("click",async()=>{const button=$("request-session-transfer");if(button.disabled)return;button.disabled=true;try{const r=await api("requestSessionTransfer",{name:guestName,clientInfo:clientInfo()});if(r.status==="Available"){sessionToken="";await login(guestName);return;}transferRequestId=r.requestId;const started=Date.now();$("transfer-request-message").textContent="Запрос отправлен. Ожидаем подтверждения на другом устройстве… Осталось 03:00";if(transferStatusTimer)clearInterval(transferStatusTimer);transferStatusTimer=setInterval(async()=>{const left=Math.max(0,180-Math.floor((Date.now()-started)/1000));$("transfer-request-message").textContent=`Запрос отправлен. Ожидаем подтверждения на другом устройстве… Осталось ${time(left)}`;try{const x=await api("transferStatus",{name:guestName});if(x.status==="Approved"){clearInterval(transferStatusTimer);transferStatusTimer=null;sessionToken="";await login(guestName);}else if(x.status==="Rejected"||x.status==="Expired"||left===0){clearInterval(transferStatusTimer);transferStatusTimer=null;button.disabled=false;guestName="";localStorage.removeItem(NAME_KEY);transferRequestId="";showOnly("guest-login-panel");msg("guest-login-message",x.status==="Rejected"?"Запрос передачи сессии отклонён.":"Время запроса передачи сессии истекло.",true);}}catch(_){}},1000);$("cancel-transfer-request").disabled=false;}catch(e){button.disabled=false;msg("transfer-request-message",e.message,true);}});
-  $("cancel-transfer-request")?.addEventListener("click",async()=>{const cancel=$("cancel-transfer-request");cancel.disabled=true;try{await api("cancelTransferRequest",{name:guestName,requestId:transferRequestId});if(transferStatusTimer)clearInterval(transferStatusTimer);transferStatusTimer=null;transferRequestId="";guestName="";localStorage.removeItem(NAME_KEY);showOnly("guest-login-panel");msg("guest-login-message","Запрос передачи сессии отменён.");}catch(e){cancel.disabled=false;msg("transfer-request-message",e.message,true);}});
   $("occupied-cancel")?.addEventListener("click",()=>{guestName="";localStorage.removeItem(NAME_KEY);showOnly("guest-login-panel");});
-  async function answerTransfer(decision){const approve=$("approve-session-transfer"),reject=$("reject-session-transfer");if(approve.disabled||reject.disabled)return;approve.disabled=reject.disabled=true;approve.textContent=decision==="approve"?"Передача выполняется…":"Разрешить";reject.textContent=decision==="reject"?"Отклоняем…":"Отклонить";try{await api("respondTransfer",{name:guestName,sessionToken,requestId:transferRequestId,decision});$("session-transfer-notice").classList.add("hidden");if(decision==="approve"){logout();msg("guest-login-message","Сессия передана другому устройству.");}}catch(e){msg("request-message",e.message,true);approve.disabled=reject.disabled=false;approve.textContent="Разрешить";reject.textContent="Отклонить";}}
-  $("approve-session-transfer")?.addEventListener("click",()=>answerTransfer("approve"));$("reject-session-transfer")?.addEventListener("click",()=>answerTransfer("reject"));
-  async function heartbeat(){if(!guestName||!sessionToken)return;try{const r=await api("heartbeat",{name:guestName,sessionToken,clientInfo:clientInfo()});if(!r.valid){sessionToken="";localStorage.removeItem(SESSION_KEY);guestName="";localStorage.removeItem(NAME_KEY);showOnly("guest-login-panel");msg("guest-login-message","Сессия завершена администратором или передана другому устройству.",true);return;}if(r.requests?.length){transferRequestId=r.requests[0].requestId;$("session-transfer-client").textContent=`Устройство: ${r.requests[0].clientInfo||"Неизвестное устройство"}. Оно хочет войти под вашим именем «${guestName}».`;$("session-transfer-notice").classList.remove("hidden");}}catch(_){}}
-  setInterval(heartbeat,30000);
+  async function heartbeat(){
+    if(document.visibilityState!=="visible"||!guestName||!sessionToken)return;
+    try{
+      const r=await api("heartbeat",{name:guestName,sessionToken,clientInfo:clientInfo()});
+      if(!r.valid){
+        stopHeartbeat();
+        sessionToken="";localStorage.removeItem(SESSION_KEY);guestName="";localStorage.removeItem(NAME_KEY);
+        showOnly("guest-login-panel");
+        msg("guest-login-message","Сессия завершена администратором или истекла.",true);
+      }
+    }catch(_){}
+  }
+  function stopHeartbeat(){if(heartbeatTimer){clearInterval(heartbeatTimer);heartbeatTimer=null;}}
+  function startHeartbeat(){
+    stopHeartbeat();
+    if(document.visibilityState!=="visible"||!guestName||!sessionToken)return;
+    heartbeat();
+    heartbeatTimer=setInterval(heartbeat,30000);
+  }
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState==="visible")startHeartbeat();
+    else stopHeartbeat();
+  });
+  window.addEventListener("focus",()=>{if(document.visibilityState==="visible")startHeartbeat();});
+  window.addEventListener("pagehide",stopHeartbeat);
+  if(document.visibilityState==="visible")startHeartbeat();
   $("request-form").addEventListener("submit",async e=>{
-    e.preventDefault();if(busy)return;const song=$("song-input").value.trim(),artist=$("artist-input").value.trim();
+    e.preventDefault();
+    if(busy)return;
+    const song=$("song-input").value.trim(),artist=$("artist-input").value.trim();
     if(!song)return msg("request-message","Введите название песни.",true);
-    busy=true;$("request-button").disabled=true;$("request-button").classList.add("is-loading");msg("request-message","Добавляем в очередь... ожидайте");
-    try{const result=await api("add",{song,artist,requester:guestName,sessionToken});$("song-input").value="";$("artist-input").value="";msg("request-message",result.message||"Песня добавлена в очередь.");await refresh(true);}
-    catch(err){msg("request-message",err.message,true);await refresh(true);}
-    finally{busy=false;$("request-button").classList.remove("is-loading");updateRestrictions();}
+    busy=true;
+    const fields=$("request-fields"),button=$("request-button"),status=$("request-message");
+    button.disabled=true;button.classList.add("is-loading");
+    fields?.classList.add("request-submitting-hidden");
+    msg("request-message","Добавляем песню в очередь... Пожалуйста, подождите");
+    try{
+      const result=await api("add",{song,artist,requester:guestName,sessionToken});
+      $("song-input").value="";$("artist-input").value="";
+      msg("request-message",result.message||"Песня добавлена в очередь.");
+      await refresh(true);
+      setTimeout(()=>{if(!busy&&status.textContent===(result.message||"Песня добавлена в очередь."))msg("request-message","");},3500);
+    }catch(err){
+      msg("request-message",err.message||"Не удалось добавить песню.",true);
+      await refresh(true);
+    }finally{
+      busy=false;fields?.classList.remove("request-submitting-hidden");
+      button.classList.remove("is-loading");updateRestrictions();
+    }
   });
   if(guestName){$("guest-name-input").value=guestName;showOnly("guest-pending-panel");$("pending-name").textContent=guestName;}else showOnly("guest-login-panel");
   async function requestAdvance(){
