@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#090914">
-  <title>KaraLoki v1.8.7.2.2 — Панель ведущего</title>
+  <meta name="referrer" content="no-referrer">
+  <title>KaraLoki v1.9.0 — Панель ведущего</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -23,12 +24,15 @@
     <section class="panel" id="login-panel">
       <h2>Вход в панель управления</h2>
       <form id="admin-login-form">
-        <label for="owner-name">Данные для входа
-          <input id="owner-name" type="password" maxlength="64" autocomplete="current-password" placeholder="Введите данные для входа" required>
+        <label for="admin-username">Имя администратора
+          <input id="admin-username" type="text" maxlength="64" autocomplete="username" placeholder="Имя администратора" required>
+        </label>
+        <label for="admin-pin">PIN-код (4 цифры)
+          <input id="admin-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="current-password" placeholder="••••" required>
         </label>
         <label class="visibility-toggle">
-          <input id="show-owner-name" type="checkbox">
-          <span>Показать вводимые данные</span>
+          <input id="show-admin-pin" type="checkbox">
+          <span>Показать PIN-код</span>
         </label>
         <button class="primary" type="submit" id="login-button">Войти</button>
         <p id="login-message" class="message" aria-live="polite"></p>

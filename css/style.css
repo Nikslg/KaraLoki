@@ -331,3 +331,19 @@ body{
 .user-inline-feedback{margin-top:7px}
 @media(max-width:650px){.confirmed-info-row{grid-template-columns:minmax(105px,1fr) minmax(75px,.65fr) auto;gap:7px}.confirmed-entry .icon-button.square-action{width:32px;height:32px;min-width:32px}.confirmed-user-actions{gap:3px}.confirmed-device-meta{font-size:.66rem}.pending-user-actions .icon-button.square-action{width:44px;height:44px;min-width:44px}}
 @media(max-width:420px){.confirmed-info-row{grid-template-columns:minmax(88px,1fr) minmax(60px,.55fr) auto;gap:5px}.confirmed-entry .icon-button.square-action{width:29px;height:30px;min-width:29px}.confirmed-user-actions{gap:2px}.confirmed-device-meta{font-size:.61rem}.confirmed-user-actions .icon-button{font-size:.85rem}}
+
+/* v1.8.8 interaction polish */
+#admin-pin{letter-spacing:.35em;font-variant-numeric:tabular-nums;}
+#transfer-request-message{min-height:1.5em;}
+#request-session-transfer,#occupied-cancel{width:100%;min-height:44px;}
+#pending-rename,#pending-logout{min-width:140px;min-height:44px;}
+.session-transfer-actions button{min-width:44px;min-height:44px;}
+
+/* v1.8.8 interaction polish */
+#admin-pin{letter-spacing:.35em;font-variant-numeric:tabular-nums;}
+#transfer-request-message{min-height:1.5em;}
+#request-session-transfer,#occupied-cancel{width:100%;min-height:44px;}
+#pending-rename,#pending-logout{min-width:140px;min-height:44px;}
+.session-transfer-actions button{min-width:44px;min-height:44px;}
+
+.user-entry.shared-device,.confirmed-entry.shared-device{outline:1px solid rgba(255,190,80,.65);background:rgba(255,190,80,.055);}

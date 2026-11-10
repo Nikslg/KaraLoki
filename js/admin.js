@@ -1,8 +1,8 @@
 (() => {
-  // KaraLoki v1.8.7.2 — admin client.
+  // KaraLoki v1.9.0 — admin client.
   "use strict";
-  const cfg=window.KARALOKI_CONFIG||{},$=id=>document.getElementById(id),OWNER_NAME="RadioLoki",ADMIN_KEY="karaloki_admin_unlocked";
-  let ownerName=sessionStorage.getItem(ADMIN_KEY)==="1"?OWNER_NAME:"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,refreshBusy=false,refreshPromise=null,nextRefreshAt=0,retryDelay=2000,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false;
+  const cfg=window.KARALOKI_CONFIG||{},$=id=>document.getElementById(id),ADMIN_TOKEN_KEY="karaloki_admin_token",ADMIN_NAME_KEY="karaloki_admin_username";
+  let adminToken=sessionStorage.getItem(ADMIN_TOKEN_KEY)||"",adminUsername=sessionStorage.getItem(ADMIN_NAME_KEY)||"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,refreshBusy=false,refreshPromise=null,nextRefreshAt=0,retryDelay=2000,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false;
   const playbackActionQueue=[]; let playbackQueueRunning=false,playbackConfirmedState=null,lastConfirmedPlaybackState=null;
   const logoutActionQueue=[];let logoutQueueRunning=false;const userActionLocks=new Set();const userInlineNotices=new Map();
   const rowLocks=new Set(); let pendingOps=0,optimisticOps=0;
@@ -12,7 +12,7 @@
     if(!cfg.API_URL||cfg.API_URL.includes("PASTE_YOUR"))return Promise.reject(new Error("Сначала укажите URL Apps Script в js/config.js."));
     return new Promise((resolve,reject)=>{
       const callback="kl_admin_cb_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2);
-      const query=new URLSearchParams({action,callback,...params}),script=document.createElement("script");
+      const query=new URLSearchParams({action,callback,...params,...(adminToken?{adminToken}:{})}),script=document.createElement("script");
       let settled=false,cleaned=false,graceTimer=null;
       const cleanup=()=>{if(cleaned)return;cleaned=true;clearTimeout(timeout);clearTimeout(graceTimer);delete window[callback];script.remove();};
       const finish=(err,data)=>{if(settled){cleanup();return;}settled=true;clearTimeout(timeout);err?reject(err):resolve(data);if(err){graceTimer=setTimeout(cleanup,120000);}else cleanup();};
@@ -64,7 +64,7 @@
     if(!entries.length){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пуста.";list.append(li);return;}
     entries.forEach(({item,kind,index})=>{
       const li=document.createElement("li");li.className="queue-item admin-queue-item public-queue-item "+kind;li.dataset.songId=item.id;
-      if(kind==="upcoming"&&normalizeName(item.requester)===normalizeName(OWNER_NAME))li.classList.add("my-request");
+      if(kind==="upcoming"&&normalizeName(item.requester)===normalizeName(adminUsername))li.classList.add("my-request");
       const num=document.createElement("span");num.className="queue-number";num.textContent=kind==="upcoming"?String(index+1).padStart(2,"0"):kind==="current"?"▶":kind==="previous"?"◷":"";
       const body=document.createElement("div");body.className="queue-item-body";
       const song=document.createElement("div");song.className="queue-song";song.textContent=label(item);
@@ -83,20 +83,20 @@
         actions.append(makeButton("×","Удалить из очереди",()=>queueAction("remove",item.id),"remove-button"));li.append(actions);
         li.addEventListener("dragstart",e=>{if(!li.draggable){e.preventDefault();return;}queueDragActive=true;activeDraggedElement=li;list.classList.add("is-reordering");e.dataTransfer.setData("text/plain",item.id);e.dataTransfer.effectAllowed="move";});
         li.addEventListener("dragover",e=>{if(!queueDragActive||!e.dataTransfer.types.includes("text/plain"))return;e.preventDefault();const moving=activeDraggedElement;if(!moving||moving===li)return;const rect=li.getBoundingClientRect();const after=e.clientY>rect.top+rect.height/2;list.insertBefore(moving,after?li.nextSibling:li);});
-        li.addEventListener("drop",e=>{e.preventDefault();if(!queueDragActive)return;const ids=Array.from(list.querySelectorAll("li.upcoming[data-song-id]")).map(x=>x.dataset.songId);queueDragActive=false;activeDraggedElement=null;list.classList.remove("is-reordering");list.querySelectorAll(".drag-armed").forEach(x=>{x.draggable=false;x.classList.remove("drag-armed")});optimisticOps++;showLoading("Сохраняем новый порядок…");api("reorder",{ownerName,ids:JSON.stringify(ids)}).then(()=>refresh(true)).catch(e=>{message("queue-message",e.message,true);refresh(true);}).finally(()=>{optimisticOps=Math.max(0,optimisticOps-1);hideLoading();refresh(true);});});
+        li.addEventListener("drop",e=>{e.preventDefault();if(!queueDragActive)return;const ids=Array.from(list.querySelectorAll("li.upcoming[data-song-id]")).map(x=>x.dataset.songId);queueDragActive=false;activeDraggedElement=null;list.classList.remove("is-reordering");list.querySelectorAll(".drag-armed").forEach(x=>{x.draggable=false;x.classList.remove("drag-armed")});optimisticOps++;showLoading("Сохраняем новый порядок…");api("reorder",{ids:JSON.stringify(ids)}).then(()=>refresh(true)).catch(e=>{message("queue-message",e.message,true);refresh(true);}).finally(()=>{optimisticOps=Math.max(0,optimisticOps-1);hideLoading();refresh(true);});});
         li.addEventListener("dragend",()=>{queueDragActive=false;activeDraggedElement=null;list.classList.remove("is-reordering");li.draggable=false;li.classList.remove("drag-armed");});
       }
       list.append(li);
     });
   }
   const playingLocks=new Set();
-  async function playLocked(item,mode,button){const key=String(item.historyId||item.id);if(playingLocks.has(key))return;playingLocks.add(key);if(button){button.disabled=true;button.textContent="…";}showLoading("Добавляем песню в очередь…");try{await api("play",{ownerName,songId:item.id,...(mode==="history"?{source:"history"}:{})});await refresh(true);message("queue-message",mode==="history"?"Песня добавлена следующей после текущей.":"Песня запущена.");}catch(e){message("queue-message",e.message,true);}finally{playingLocks.delete(key);if(button&&button.isConnected){button.disabled=false;if(button.dataset.iconMarkup)button.innerHTML=button.dataset.iconMarkup;else button.textContent="▶";}hideLoading();}}
+  async function playLocked(item,mode,button){const key=String(item.historyId||item.id);if(playingLocks.has(key))return;playingLocks.add(key);if(button){button.disabled=true;button.textContent="…";}showLoading("Добавляем песню в очередь…");try{await api("play",{songId:item.id,...(mode==="history"?{source:"history"}:{})});await refresh(true);message("queue-message",mode==="history"?"Песня добавлена следующей после текущей.":"Песня запущена.");}catch(e){message("queue-message",e.message,true);}finally{playingLocks.delete(key);if(button&&button.isConnected){button.disabled=false;if(button.dataset.iconMarkup)button.innerHTML=button.dataset.iconMarkup;else button.textContent="▶";}hideLoading();}}
   function historyStatus(s){return({Completed:"Исполнена",Skipped:"Пропущена",Interrupted:"Прервана",Removed:"Удалена",Replayed:"Повтор"})[s]||s;}
   async function approveUserOptimistic(name,row){
     const key=normalizeName(name);if(rowLocks.has(key))return;rowLocks.add(key);optimisticOps++;const originalUsers=(lastState?.users||[]).map(u=>({...u}));
     if(lastState){lastState.users=lastState.users.filter(u=>!(normalizeName(u.name)===key&&u.status==="Pending"));renderUsers(lastState.users);}
     row?.classList.add("is-pending-action");showLoading(`Подтверждаем ${name}…`);
-    try{await api("approveUser",{ownerName,name});message("users-message",`Пользователь «${name}» подтверждён.`);await refresh(true);}
+    try{await api("approveUser",{name});message("users-message",`Пользователь «${name}» подтверждён.`);await refresh(true);}
     catch(e){if(lastState){lastState.users=originalUsers;renderUsers(lastState.users);}message("users-message",e.message,true);}
     finally{rowLocks.delete(key);optimisticOps=Math.max(0,optimisticOps-1);hideLoading();await refresh(true);}
   }
@@ -104,13 +104,14 @@
   function hideLoading(){pendingOps=Math.max(0,pendingOps-1);if(!pendingOps)$("admin-loading")?.classList.add("hidden");}
   async function moveOptimistic(songId,direction){
     if(busy||!lastState)return;optimisticOps++;const q=[...(lastState.queue||[])],i=q.findIndex(x=>x.id===songId),j=direction==="up"?i-1:i+1;if(i<0||j<0||j>=q.length){optimisticOps=Math.max(0,optimisticOps-1);return;}[q[i],q[j]]=[q[j],q[i]];const old=lastState.queue;lastState.queue=q;renderCombinedQueue(lastState);
-    showLoading("Обновляем порядок очереди…");try{await api("move",{ownerName,songId,direction});await refresh(true);}catch(e){lastState.queue=old;renderCombinedQueue(lastState);message("queue-message",e.message,true);}finally{optimisticOps=Math.max(0,optimisticOps-1);hideLoading();await refresh(true);}
+    showLoading("Обновляем порядок очереди…");try{await api("move",{songId,direction});await refresh(true);}catch(e){lastState.queue=old;renderCombinedQueue(lastState);message("queue-message",e.message,true);}finally{optimisticOps=Math.max(0,optimisticOps-1);hideLoading();await refresh(true);}
   }
   function renderPending(users){
+    const shared=new Set();const owners=new Map();users.forEach(u=>(u.deviceIds||[]).forEach(id=>{if(!owners.has(id))owners.set(id,[]);owners.get(id).push(u.name);}));owners.forEach((names,id)=>{if(names.length>1)names.forEach(n=>shared.add(n));});
     const list=$("pending-users-list");list.replaceChildren();
     if(!users.length){const li=document.createElement("li");li.className="empty";li.textContent="Нет ожидающих пользователей.";list.appendChild(li);return;}
     users.forEach(user=>{
-      const li=document.createElement("li");li.className="user-entry";
+      const li=document.createElement("li");li.className="user-entry";if(shared.has(user.name)){li.classList.add("shared-device");li.title="Есть совпадение Device ID с другим ожидающим пользователем.";}
       const name=document.createElement("strong");name.className="user-name";name.textContent=user.name;if(user.transferPending){name.title="Ожидает решения по запросу передачи аккаунта";const req=document.createElement("span");req.className="session-request-mark";req.textContent=" · запрос";name.append(req);}
       const presence=document.createElement("span");presence.className=`presence-light ${user.presence||"offline"}`;presence.title=user.presence==="online"?"В сети":user.presence==="recent"?"Нет связи до часа":"Не в сети";presence.setAttribute("aria-label",presence.title);name.prepend(presence);
       const details=document.createElement("div");details.className="user-device-meta";
@@ -123,12 +124,13 @@
       li.append(body,actions);list.appendChild(li);
     });
   }
-  async function renameUser(oldName){const next=prompt("Новое имя пользователя:",oldName);if(next===null)return;const newName=next.trim().replace(/\s+/g," ");if(newName.length<2)return message("users-message","Введите имя длиной не менее двух символов.",true);showLoading("Изменяем имя пользователя…");try{await api("renameGuest",{ownerName,oldName,newName});await refresh(true);message("users-message",`Имя «${oldName}» изменено на «${newName}».`);}catch(e){message("users-message",e.message,true);}finally{hideLoading();}}
+  async function renameUser(oldName){const next=prompt("Новое имя пользователя:",oldName);if(next===null)return;const newName=next.trim().replace(/\s+/g," ");if(newName.length<2)return message("users-message","Введите имя длиной не менее двух символов.",true);showLoading("Изменяем имя пользователя…");try{await api("renameGuest",{oldName,newName});await refresh(true);message("users-message",`Имя «${oldName}» изменено на «${newName}».`);}catch(e){message("users-message",e.message,true);}finally{hideLoading();}}
   function renderConfirmed(users){
+    const shared=new Set();const owners=new Map();users.forEach(u=>(u.deviceIds||[]).forEach(id=>{if(!owners.has(id))owners.set(id,[]);owners.get(id).push(u.name);}));owners.forEach(names=>{if(names.length>1)names.forEach(n=>shared.add(n));});
     const list=$("confirmed-users-list");list.replaceChildren();
     if(!users.length){const li=document.createElement("li");li.className="empty";li.textContent="Пока нет подтверждённых пользователей.";list.appendChild(li);return;}
     users.forEach(user=>{
-      const li=document.createElement("li");li.className="confirmed-entry";
+      const li=document.createElement("li");li.className="confirmed-entry";if(shared.has(user.name)){li.classList.add("shared-device");li.title="Есть совпадение Device ID с другим подтверждённым пользователем.";}
       const name=document.createElement("strong");name.className="user-name";name.textContent=user.name;if(user.transferPending){name.title="Ожидает решения по запросу передачи аккаунта";const req=document.createElement("span");req.className="session-request-mark";req.textContent=" · запрос";name.append(req);}
       const presence=document.createElement("span");presence.className=`presence-light ${user.presence||"offline"}`;presence.title=user.presence==="online"?"В сети":user.presence==="recent"?"Нет связи до часа":"Не в сети";presence.setAttribute("aria-label",presence.title);name.prepend(presence);
       const row=document.createElement("div");row.className="confirmed-info-row";
@@ -167,11 +169,11 @@
     $("queue-count").textContent=`${(state.queue||[]).length} песен`;$("shuffle-button").disabled=Math.max(0,(state.queue||[]).length-3)<2;$("history-count").textContent=String((state.history||[]).length);renderUsers(state.users||[]);
   }
   async function refresh(force=false){
-    if(!ownerName||queueDragActive)return;
+    if(!adminToken||queueDragActive)return;
     if(refreshPromise)return refreshPromise;
     if(!force&&Date.now()<nextRefreshAt)return;
     refreshBusy=true;
-    refreshPromise=(async()=>{try{const result=await api("state",{ownerName});if(!result||!result.state)throw new Error("Сервер вернул неполные данные.");retryDelay=2000;nextRefreshAt=0;if(!queueDragActive&&optimisticOps===0&&!playbackActionBusy)render(result.state);}
+    refreshPromise=(async()=>{try{const result=await api("state",{});if(!result||!result.state)throw new Error("Сервер вернул неполные данные.");retryDelay=2000;nextRefreshAt=0;if(!queueDragActive&&optimisticOps===0&&!playbackActionBusy)render(result.state);}
       catch(e){nextRefreshAt=Date.now()+retryDelay;retryDelay=Math.min(30000,retryDelay*2);if(!lastState){message("control-message",e.message,true);const t=$("startup-loading")?.querySelector(".loading-text");if(t)t.textContent="Не удалось загрузить данные. Повторяем подключение…";}}
       finally{refreshBusy=false;refreshPromise=null;}})();
     return refreshPromise;
@@ -194,7 +196,7 @@
     while(logoutActionQueue.length){
       const item=logoutActionQueue.shift();
       try{
-        await api("forceLogoutSession",{ownerName,name:item.name});
+        await api("forceLogoutSession",{name:item.name});
         inlineUserMessage(item.feedback,"Сессия завершена. Доступ к имени освобождён.");
         setTimeout(()=>{userInlineNotices.delete(item.name);if(item.feedback.isConnected)item.feedback.classList.add("hidden");},5000);
         if(lastState?.users){const u=lastState.users.find(x=>x.name===item.name);if(u){u.sessionActive=false;u.presence="offline";}}
@@ -209,16 +211,16 @@
   function actionMessageId(action){if(["pause","resume","skip"].includes(action))return "control-message";if(["approveUser","denyUser","liftCooldown","banUser","returnToPending","rejectTransferRequest"].includes(action))return "users-message";return "queue-message";}
   async function adminAction(action,params={}){
     if(busy)return;busy=true;const target=actionMessageId(action);message(target,pendingText[action]||"Выполняем действие...");showLoading(pendingText[action]||"Выполняем действие...");
-    try{await api(action,{ownerName,...params});await refresh(true);const success=action==="play"&&params.source==="history"?"Песня добавлена следующей после текущей.":(successText[action]||"Изменения сохранены.");message(target,success);}
+    try{await api(action,{...params});await refresh(true);const success=action==="play"&&params.source==="history"?"Песня добавлена следующей после текущей.":(successText[action]||"Изменения сохранены.");message(target,success);}
     catch(e){message(target,e.message,true);}
     finally{busy=false;hideLoading();if(lastState){render(lastState);$("pause-button").textContent=lastState.paused?"▶ Продолжить":"Ⅱ Пауза";}}
   }
   async function queueAction(action,songId){if(action==="remove"&&!confirm("Удалить эту песню из очереди? Ожидание заказчика будет снято."))return;await adminAction(action,{songId});}
   function switchTab(tabId){document.querySelectorAll(".admin-tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===tabId));document.querySelectorAll(".admin-tab-panel").forEach(p=>p.classList.toggle("hidden",p.id!==tabId));}
   document.querySelectorAll(".admin-tab").forEach(b=>b.addEventListener("click",()=>switchTab(b.dataset.tab)));
-  $("show-owner-name").addEventListener("change",()=>{$("owner-name").type=$("show-owner-name").checked?"text":"password";});
-  $("admin-login-form").addEventListener("submit",async e=>{e.preventDefault();const entered=$("owner-name").value.trim();$("login-button").disabled=true;$("login-button").classList.add("is-loading");message("login-message","Проверяем данные для входа... ожидайте");showLoading("Открываем панель ведущего…");try{await api("adminCheck",{ownerName:entered});ownerName=OWNER_NAME;sessionStorage.setItem(ADMIN_KEY,"1");unlocked(true);$("owner-name").value="";switchTab("queue-tab");$("startup-loading")?.classList.remove("is-hidden");await refresh();}catch(_){message("login-message","Не удалось выполнить вход. Проверьте данные и попробуйте снова.",true);}finally{$("login-button").disabled=false;$("login-button").classList.remove("is-loading");hideLoading();}});
-  $("lock-button").addEventListener("click",()=>{ownerName="";sessionStorage.removeItem(ADMIN_KEY);lastState=null;unlocked(false);$("owner-name").value="";});
+  $("show-admin-pin").addEventListener("change",()=>{$("admin-pin").type=$("show-admin-pin").checked?"text":"password";});
+  $("admin-login-form").addEventListener("submit",async e=>{e.preventDefault();const username=$("admin-username").value.trim(),pin=$("admin-pin").value.trim();if(!/^\d{4}$/.test(pin)){message("login-message","PIN должен состоять ровно из четырёх цифр.",true);return;}$("login-button").disabled=true;$("login-button").classList.add("is-loading");message("login-message","Проверяем данные для входа... ожидайте");showLoading("Открываем панель ведущего…");try{if(!window.crypto?.subtle)throw new Error("Для безопасного входа нужен современный браузер с HTTPS.");const challenge=await api("adminChallenge",{username});const enc=new TextEncoder();const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",enc.encode(value)))).map(b=>b.toString(16).padStart(2,"0")).join("");const verifier=await digest(challenge.salt+":"+pin);const proof=await digest(verifier+":"+challenge.nonce);const result=await api("adminCheck",{username,nonce:challenge.nonce,proof});adminToken=result.adminToken;adminUsername=result.username;sessionStorage.setItem(ADMIN_TOKEN_KEY,adminToken);sessionStorage.setItem(ADMIN_NAME_KEY,adminUsername);unlocked(true);$("admin-username").value="";$("admin-pin").value="";switchTab("queue-tab");$("startup-loading")?.classList.remove("is-hidden");await refresh();}catch(err){message("login-message",err.message||"Не удалось выполнить вход. Проверьте данные и попробуйте снова.",true);}finally{$("login-button").disabled=false;$("login-button").classList.remove("is-loading");hideLoading();}});
+  $("lock-button").addEventListener("click",()=>{const old=adminToken;adminToken="";adminUsername="";sessionStorage.removeItem(ADMIN_TOKEN_KEY);sessionStorage.removeItem(ADMIN_NAME_KEY);if(old)api("adminLogout",{adminToken:old}).catch(()=>{});lastState=null;unlocked(false);$("admin-username").value="";$("admin-pin").value="";});
   function applyOptimisticPlayback(action,params={}){
     if(!lastState)return;
     const now=Date.now()+serverOffsetMs;
@@ -252,13 +254,13 @@
       while(playbackActionQueue.length){
         const item=playbackActionQueue.shift();
         message("control-message",pendingText[item.action]||"Сохраняем изменение…");
-        await api(item.action,{ownerName,...item.params});
+        await api(item.action,{...item.params});
       }
-      const result=await api("state",{ownerName});lastState=result.state;render(result.state);
+      const result=await api("state",{});lastState=result.state;render(result.state);
       message("control-message","Изменения воспроизведения сохранены.");
     }catch(err){
       playbackActionQueue.length=0;
-      try{const result=await api("state",{ownerName});lastState=result.state;render(result.state);}
+      try{const result=await api("state",{});lastState=result.state;render(result.state);}
       catch(_){lastState=playbackConfirmedState;if(lastState)render(lastState);}
       message("control-message",`${err.message} Состояние синхронизировано с сервером.`,true);
     }finally{
@@ -281,9 +283,9 @@
   $("skip-button").addEventListener("click",()=>optimisticPlaybackAction("skip"));
   $("pause-button").addEventListener("click",()=>optimisticPlaybackAction(lastState?.paused?"resume":"pause"));
   $("clear-queue-button").addEventListener("click",()=>{if(confirm("Очистить все ожидающие песни? Ожидание затронутых гостей будет снято. История сохранится."))adminAction("clearQueue");});
-  $("admin-request-form").addEventListener("submit",async e=>{e.preventDefault();const song=$("admin-song-input").value.trim(),artist=$("admin-artist-input").value.trim();if(!song)return;await adminAction("add",{song,artist,requester:OWNER_NAME,ownerName});$("admin-song-input").value="";$("admin-artist-input").value="";});
-  unlocked(!!ownerName);switchTab("queue-tab");
-  if(ownerName){const overlay=$("startup-loading");overlay?.classList.remove("is-hidden");const loadingText=overlay?.querySelector(".loading-text");if(loadingText)loadingText.textContent="Загружаем данные панели…";}
+  $("admin-request-form").addEventListener("submit",async e=>{e.preventDefault();const song=$("admin-song-input").value.trim(),artist=$("admin-artist-input").value.trim();if(!song)return;await adminAction("add",{song,artist,requester:adminUsername});$("admin-song-input").value="";$("admin-artist-input").value="";});
+  unlocked(!!adminToken);switchTab("queue-tab");
+  if(adminToken){const overlay=$("startup-loading");overlay?.classList.remove("is-hidden");const loadingText=overlay?.querySelector(".loading-text");if(loadingText)loadingText.textContent="Загружаем данные панели…";}
   async function requestAdvance(){
     if(zeroAdvanceBusy||!lastState?.settings?.autoplay)return;zeroAdvanceBusy=true;
     optimisticOps++;
