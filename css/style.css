@@ -556,7 +556,7 @@ body{
 
 /* v1.9.4 — shared cascading global notifications */
 .global-notifications{
-  position:fixed;z-index:99999;top:14px;left:50%;transform:translateX(-50%);
+  position:fixed;z-index:99999;top:42%;left:50%;transform:translate(-50%,-50%);
   width:min(520px,calc(100vw - 24px));display:flex;flex-direction:column;gap:8px;
   pointer-events:none;
 }

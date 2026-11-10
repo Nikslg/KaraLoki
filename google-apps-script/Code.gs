@@ -288,7 +288,18 @@ function renameGuest_(oldName,newName){
   if(newKey===nameKey_(getAdminRecord_().username))throw new Error("Это имя зарезервировано для ведущего.");
   const sh=getSS_().getSheetByName("Users"),rows=getRows_(sh),user=rows.find(r=>String(r.nameKey||nameKey_(r.name))===oldKey);
   if(!user)throw new Error("Пользователь не найден.");
-  if(rows.some(r=>String(r.nameKey||nameKey_(r.name))===newKey && String(r.nameKey||nameKey_(r.name))!==oldKey))throw new Error("Это имя уже занято. Выберите другое.");
+  const collision=rows.find(r=>String(r.nameKey||nameKey_(r.name))===newKey && String(r.nameKey||nameKey_(r.name))!==oldKey);
+  if(collision){
+    if(String(collision.status)!=="Denied")throw new Error("Это имя уже занято. Выберите другое.");
+    // A rejected registration is historical, not a permanent reservation of the name.
+    // Remove its stale identity rows so the active user's rename can safely reuse the name.
+    const sessions=getSS_().getSheetByName("Sessions"),sessionRows=getRows_(sessions);
+    for(let i=sessionRows.length-1;i>=0;i--)if(sessionRows[i].nameKey===newKey)sessions.deleteRow(i+2);
+    const devices=getSS_().getSheetByName("Devices"),deviceRows=getRows_(devices);
+    for(let i=deviceRows.length-1;i>=0;i--)if(deviceRows[i].nameKey===newKey)devices.deleteRow(i+2);
+    const all=sh.getDataRange().getValues(),headers=all[0].map(String),deniedIndex=all.findIndex((r,i)=>i>0&&String(r[headers.indexOf("nameKey")]||nameKey_(r[headers.indexOf("name")]))===newKey);
+    if(deniedIndex>0)sh.deleteRow(deniedIndex+1);
+  }
   const values=sh.getDataRange().getValues(),headers=values[0].map(String),rowIndex=values.findIndex((r,i)=>i>0&&String(r[headers.indexOf("nameKey")]||nameKey_(r[headers.indexOf("name")]))===oldKey);
   if(rowIndex<1)throw new Error("Пользователь не найден.");
   sh.getRange(rowIndex+1,headers.indexOf("name")+1).setValue(name);sh.getRange(rowIndex+1,headers.indexOf("nameKey")+1).setValue(newKey);sh.getRange(rowIndex+1,headers.indexOf("updatedAt")+1).setValue(new Date());
@@ -296,6 +307,8 @@ function renameGuest_(oldName,newName){
   for(let i=1;i<qv.length;i++)if(nameKey_(qv[i][requesterCol])===oldKey)q.getRange(i+1,requesterCol+1).setValue(name);
   const h=getSS_().getSheetByName("History"),hv=h.getDataRange().getValues(),hh=hv[0].map(String),hr=hh.indexOf("requester");
   for(let i=1;i<hv.length;i++)if(nameKey_(hv[i][hr])===oldKey)h.getRange(i+1,hr+1).setValue(name);
+  const deviceSheet=getSS_().getSheetByName("Devices"),deviceValues=getRows_(deviceSheet);
+  deviceValues.forEach((d,i)=>{if(d.nameKey===oldKey){deviceSheet.getRange(i+2,1).setValue(newKey);deviceSheet.getRange(i+2,2).setValue(name);}});
 }
 
 function advanceIfExpired_() {

@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.9.4 — admin client.
+  // KaraLoki v1.9.4.1 — admin client.
   "use strict";
   const cfg=window.KARALOKI_CONFIG||{},$=id=>document.getElementById(id),ADMIN_TOKEN_KEY="karaloki_admin_token",ADMIN_NAME_KEY="karaloki_admin_username";
   let adminToken=sessionStorage.getItem(ADMIN_TOKEN_KEY)||"",adminUsername=sessionStorage.getItem(ADMIN_NAME_KEY)||"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,pendingAdminSong=null,adminSongBusy=false,refreshBusy=false,refreshPromise=null,nextRefreshAt=0,retryDelay=2000,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false;
@@ -25,6 +25,7 @@
   function time(s){s=Math.max(0,Math.floor(Number(s)||0));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
   function label(item){return item.artist?`${item.song} — ${item.artist}`:item.song;}
   function normalizeName(value){return String(value||"").trim().replace(/\s+/g," ").toLocaleLowerCase();}
+  function unlocked(value){$("login-panel")?.classList.toggle("hidden",!!value);$("admin-content")?.classList.toggle("hidden",!value);}
   const globalNotices=new Map();let noticeSequence=0;
   function renderGlobalNotices(){
     const host=$("global-notifications");if(!host)return;host.replaceChildren();
