@@ -25,7 +25,17 @@
   function time(s){s=Math.max(0,Math.floor(Number(s)||0));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
   function label(item){return item.artist?`${item.song} — ${item.artist}`:item.song;}
   function normalizeName(value){return String(value||"").trim().replace(/\s+/g," ").toLocaleLowerCase();}
-  function message(id,value,error=false){$(id).textContent=value||"";$(id).style.color=error?"#ff9c9c":"";}
+  const messageTimers=new Map();
+  function message(id,value,error=false){
+    const el=$(id);if(!el)return;
+    const oldTimer=messageTimers.get(id);if(oldTimer)clearTimeout(oldTimer);
+    el.textContent=value||"";el.style.color=error?"#ff9c9c":"";
+    el.classList.toggle("hidden",!value);
+    if(value&&!error){
+      const timer=setTimeout(()=>{el.textContent="";el.classList.add("hidden");messageTimers.delete(id);},4500);
+      messageTimers.set(id,timer);
+    }
+  }
   function unlocked(on){$("login-panel").classList.toggle("hidden",on);$("admin-content").classList.toggle("hidden",!on);}
   function makeButton(text,title,handler,classes=""){const b=document.createElement("button");b.type="button";b.className="icon-button square-action "+classes;b.textContent=text;b.title=title;b.setAttribute("aria-label",title);b.addEventListener("click",handler);return b;}
   const historyIconMarkup={
@@ -95,10 +105,10 @@
   async function approveUserOptimistic(name,row){
     const key=normalizeName(name);if(rowLocks.has(key))return;rowLocks.add(key);optimisticOps++;const originalUsers=(lastState?.users||[]).map(u=>({...u}));
     if(lastState){lastState.users=lastState.users.filter(u=>!(normalizeName(u.name)===key&&u.status==="Pending"));renderUsers(lastState.users);}
-    row?.classList.add("is-pending-action");showLoading(`Подтверждаем ${name}…`);
-    try{await api("approveUser",{name});message("users-message",`Пользователь «${name}» подтверждён.`);await refresh(true);}
-    catch(e){if(lastState){lastState.users=originalUsers;renderUsers(lastState.users);}message("users-message",e.message,true);}
-    finally{rowLocks.delete(key);optimisticOps=Math.max(0,optimisticOps-1);hideLoading();await refresh(true);}
+    row?.classList.add("is-pending-action");const feedback=getUserFeedback(name,row);inlineUserMessage(feedback,"Подтверждаем пользователя…");
+    try{await api("approveUser",{name});inlineUserMessage(feedback,`Пользователь «${name}» подтверждён.`);await refresh(true);}
+    catch(e){if(lastState){lastState.users=originalUsers;renderUsers(lastState.users);}const restored=getUserFeedback(name,getUserRow(name));inlineUserMessage(restored,e.message||"Не удалось подтвердить пользователя.",true);}
+    finally{rowLocks.delete(key);optimisticOps=Math.max(0,optimisticOps-1);await refresh(true);}
   }
   function showLoading(text){pendingOps++;const el=$("admin-loading");if(el){el.classList.remove("hidden");$("admin-loading-text").textContent=text||"Выполняем действие…";}}
   function hideLoading(){pendingOps=Math.max(0,pendingOps-1);if(!pendingOps)$("admin-loading")?.classList.add("hidden");}
@@ -111,7 +121,7 @@
     const list=$("pending-users-list");list.replaceChildren();
     if(!users.length){const li=document.createElement("li");li.className="empty";li.textContent="Нет ожидающих пользователей.";list.appendChild(li);return;}
     users.forEach(user=>{
-      const li=document.createElement("li");li.className="user-entry";if(shared.has(user.name)){li.classList.add("shared-device");li.title="Есть совпадение Device ID с другим ожидающим пользователем.";}
+      const li=document.createElement("li");li.className="user-entry";li.dataset.userName=user.name;if(shared.has(user.name)){li.classList.add("shared-device");li.title="Есть совпадение Device ID с другим ожидающим пользователем.";}
       const name=document.createElement("strong");name.className="user-name";name.textContent=user.name;if(user.transferPending){name.title="Ожидает решения по запросу передачи аккаунта";const req=document.createElement("span");req.className="session-request-mark";req.textContent=" · запрос";name.append(req);}
       const presence=document.createElement("span");presence.className=`presence-light ${user.presence||"offline"}`;presence.title=user.presence==="online"?"В сети":user.presence==="recent"?"Нет связи до часа":"Не в сети";presence.setAttribute("aria-label",presence.title);name.prepend(presence);
       const details=document.createElement("div");details.className="user-device-meta";
@@ -121,7 +131,9 @@
       const actions=document.createElement("div");actions.className="user-actions pending-user-actions";
       actions.append(makeButton("✓","Одобрить пользователя",()=>approveUserOptimistic(user.name,li),"allow-square"),
         makeButton("×","Отклонить пользователя",()=>adminAction("denyUser",{name:user.name}),"deny-square"));
-      li.append(body,actions);list.appendChild(li);
+      const feedback=document.createElement("div");feedback.className="user-inline-feedback hidden";feedback.id=`user-feedback-${encodeURIComponent(user.name)}`;
+      const savedNotice=userInlineNotices.get(user.name);if(savedNotice){feedback.textContent=savedNotice.text;feedback.classList.remove("hidden");feedback.classList.add(savedNotice.error?"is-error":"is-success");}
+      li.append(body,actions,feedback);list.appendChild(li);
     });
   }
   async function renameUser(oldName){const next=prompt("Новое имя пользователя:",oldName);if(next===null)return;const newName=next.trim().replace(/\s+/g," ");if(newName.length<2)return message("users-message","Введите имя длиной не менее двух символов.",true);showLoading("Изменяем имя пользователя…");try{await api("renameGuest",{oldName,newName});await refresh(true);message("users-message",`Имя «${oldName}» изменено на «${newName}».`);}catch(e){message("users-message",e.message,true);}finally{hideLoading();}}
@@ -130,7 +142,7 @@
     const list=$("confirmed-users-list");list.replaceChildren();
     if(!users.length){const li=document.createElement("li");li.className="empty";li.textContent="Пока нет подтверждённых пользователей.";list.appendChild(li);return;}
     users.forEach(user=>{
-      const li=document.createElement("li");li.className="confirmed-entry";if(shared.has(user.name)){li.classList.add("shared-device");li.title="Есть совпадение Device ID с другим подтверждённым пользователем.";}
+      const li=document.createElement("li");li.className="confirmed-entry";li.dataset.userName=user.name;if(shared.has(user.name)){li.classList.add("shared-device");li.title="Есть совпадение Device ID с другим подтверждённым пользователем.";}
       const name=document.createElement("strong");name.className="user-name";name.textContent=user.name;if(user.transferPending){name.title="Ожидает решения по запросу передачи аккаунта";const req=document.createElement("span");req.className="session-request-mark";req.textContent=" · запрос";name.append(req);}
       const presence=document.createElement("span");presence.className=`presence-light ${user.presence||"offline"}`;presence.title=user.presence==="online"?"В сети":user.presence==="recent"?"Нет связи до часа":"Не в сети";presence.setAttribute("aria-label",presence.title);name.prepend(presence);
       const row=document.createElement("div");row.className="confirmed-info-row";
@@ -180,8 +192,26 @@
   }
   const pendingText={skip:"Пропускаем песню... ожидайте",pause:"Приостанавливаем воспроизведение... ожидайте",resume:"Возобновляем воспроизведение... ожидайте",play:"Запускаем выбранную песню... ожидайте",clearQueue:"Очищаем очередь... ожидайте",add:"Добавляем песню в очередь... ожидайте",remove:"Удаляем песню... ожидайте",move:"Обновляем порядок очереди... ожидайте",approveUser:"Подтверждаем пользователя... ожидайте",denyUser:"Отклоняем пользователя... ожидайте",liftCooldown:"Снимаем ожидание... ожидайте",banUser:"Применяем временную блокировку... ожидайте",returnToPending:"Возвращаем пользователя на подтверждение... ожидайте",hideHistory:"Скрываем запись истории... ожидайте",deleteHistory:"Удаляем запись истории... ожидайте"};
   const successText={clearHistory:"История отмечена как очищенная. Записи сохранены в таблице.",shuffle:"Очередь перемешана после первых трёх песен.",reorder:"Порядок очереди обновлён.",saveSettings:"Настройки сохранены.",setEventMode:"Режим мероприятия обновлён.",skip:"Песня пропущена.",pause:"Воспроизведение приостановлено.",resume:"Воспроизведение продолжено.",play:"Песня запущена.",clearQueue:"Очередь очищена. Ожидание затронутых гостей снято.",add:"Песня добавлена в очередь.",remove:"Песня удалена, ожидание заказчика снято.",move:"Порядок очереди обновлён.",approveUser:"Пользователь подтверждён.",denyUser:"Заявка отклонена.",liftCooldown:"Ожидание снято.",banUser:"Заказы заблокированы на 30 минут.",forceLogoutSession:"Сессия завершена. Доступ к имени освобождён.",returnToPending:"Пользователь возвращён в список ожидающих подтверждения.",hideHistory:"Запись скрыта.",deleteHistory:"Запись удалена из истории."};
+  function getUserRow(name){
+    return [...$("confirmed-users-list").children,...$("pending-users-list").children]
+      .find(el=>el.dataset?.userName===name)||null;
+  }
+  function getUserFeedback(name,row){
+    row=row||getUserRow(name);
+    const id=`user-feedback-${encodeURIComponent(name)}`;
+    let feedback=document.getElementById(id);
+    if(!feedback&&row){
+      feedback=document.createElement("div");
+      feedback.className="user-inline-feedback hidden";
+      feedback.id=id;
+      row.appendChild(feedback);
+    }
+    return feedback;
+  }
   function inlineUserMessage(feedback,text,isError=false){
-    feedback.textContent=text;feedback.classList.remove("hidden","is-error","is-success");
+    if(!feedback)return;
+    feedback.textContent=text;
+    feedback.classList.remove("hidden","is-error","is-success");
     feedback.classList.add(isError?"is-error":"is-success");
     const key=feedback.id.replace("user-feedback-","");let name="";try{name=decodeURIComponent(key);}catch(_){}if(name)userInlineNotices.set(name,{text,error:isError});
   }
@@ -210,6 +240,24 @@
   }
   function actionMessageId(action){if(["pause","resume","skip"].includes(action))return "control-message";if(["approveUser","denyUser","liftCooldown","banUser","returnToPending","rejectTransferRequest"].includes(action))return "users-message";return "queue-message";}
   async function adminAction(action,params={}){
+    const userScoped=["denyUser","liftCooldown","banUser","returnToPending","forceLogoutSession"].includes(action)&&params.name;
+    if(userScoped){
+      const name=String(params.name),key=normalizeName(name);
+      if(userActionLocks.has(key))return;
+      userActionLocks.add(key);
+      const row=getUserRow(name);
+      const feedback=getUserFeedback(name,row);
+      inlineUserMessage(feedback,pendingText[action]||"Выполняем действие…");
+      try{
+        await api(action,{...params});
+        const success=successText[action]||"Изменения сохранены.";
+        inlineUserMessage(feedback,success);
+        await refresh(true);
+        setTimeout(()=>{userInlineNotices.delete(name);const current=document.getElementById(`user-feedback-${encodeURIComponent(name)}`);if(current)current.classList.add("hidden");},5000);
+      }catch(e){inlineUserMessage(feedback,e.message||"Не удалось выполнить действие.",true);}
+      finally{userActionLocks.delete(key);}
+      return;
+    }
     if(busy)return;busy=true;const target=actionMessageId(action);message(target,pendingText[action]||"Выполняем действие...");showLoading(pendingText[action]||"Выполняем действие...");
     try{await api(action,{...params});await refresh(true);const success=action==="play"&&params.source==="history"?"Песня добавлена следующей после текущей.":(successText[action]||"Изменения сохранены.");message(target,success);}
     catch(e){message(target,e.message,true);}
