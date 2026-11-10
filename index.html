@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#090914">
-  <title>KaraLoki v1.8.5.1 — Очередь караоке</title>
+  <title>KaraLoki v1.8.7 — Очередь караоке</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -39,6 +39,13 @@
       <button type="button" id="pending-logout" class="quiet">Выйти</button>
     </section>
 
+    <section class="panel hidden" id="guest-session-occupied-panel">
+      <h2>Пользователь уже активен</h2>
+      <p id="session-occupied-message" class="message">Это имя используется на другом устройстве.</p>
+      <button type="button" class="primary" id="request-session-transfer">Запросить передачу сессии</button>
+      <p id="transfer-request-message" class="message" aria-live="polite"></p>
+      <button type="button" class="quiet" id="occupied-cancel">Отмена</button>
+    </section>
     <section class="panel hidden" id="guest-banned-panel">
       <h2>Доступ временно ограничен</h2>
       <p id="guest-ban-message" class="notice notice-ban"></p>
@@ -47,9 +54,15 @@
 
     <div id="public-content" class="hidden">
       <section class="panel request-panel">
+                  <div id="session-transfer-notice" class="session-transfer-notice hidden" role="alert">
+          <strong>Запрос на вход в аккаунт</strong>
+          <p id="session-transfer-client">Другое устройство хочет войти под вашим именем.</p>
+          <p>Если вы разрешите передачу, текущая сессия будет завершена, а другое устройство получит доступ.</p>
+          <div class="session-transfer-actions"><button type="button" class="primary" id="approve-session-transfer">Разрешить</button><button type="button" class="quiet" id="reject-session-transfer">Отклонить</button></div>
+        </div>
         <div class="section-heading">
           <h2>Заказать песню</h2>
-          <div class="guest-heading-actions"><span class="count-pill">Вы: <strong id="confirmed-guest-name"></strong></span><button type="button" class="quiet compact" id="confirmed-rename">Изменить имя</button><button type="button" id="guest-logout" class="quiet compact hidden">Выйти</button></div>
+        <div class="guest-heading-actions"><span class="count-pill">Вы: <strong id="confirmed-guest-name"></strong></span><button type="button" class="quiet compact" id="confirmed-rename">Изменить имя</button><button type="button" id="guest-logout" class="quiet compact hidden">Выйти</button></div>
         </div>
         <form id="request-form">
           <div class="field-row">

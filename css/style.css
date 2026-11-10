@@ -267,7 +267,7 @@ body{
 @media(max-width:520px){#admin-content{gap:12px}.admin-request-workspace{gap:15px}.admin-request-section{padding-top:15px}}
 
 
-/* v1.8.5.1 hotfix: aligned guest account controls and event settings */
+/* v1.8.6 hotfix: aligned guest account controls and event settings */
 .guest-heading-actions{display:flex;flex-direction:row;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:nowrap}
 .guest-heading-actions .count-pill{white-space:nowrap;min-height:38px;display:inline-flex;align-items:center}
 .guest-heading-actions button{min-height:38px;white-space:nowrap}
@@ -280,6 +280,27 @@ body{
  .guest-heading-actions .count-pill,.guest-heading-actions button{min-height:36px}
  #settings-tab #save-settings-button{width:100%;justify-self:stretch}
 }
-#confirmed-guest-name {
-  margin-left: 4px;
-}
+
+
+/* v1.8.6 final polish */
+#confirmed-guest-name{margin-left:4px}
+#history-tab #clear-history-button{margin-top:10px;justify-self:start}
+.history-action-icon svg{display:block;width:18px;height:18px;flex:0 0 18px}
+.history-action-icon{display:inline-flex;align-items:center;justify-content:center}
+
+/* v1.8.7 active-session indicators and compact violet logout action */
+.presence-light{display:inline-block;width:9px;height:9px;min-width:9px;border-radius:50%;margin-right:7px;vertical-align:middle;box-shadow:0 0 7px currentColor}
+.presence-light.online{background:#35d477;color:#35d477}
+.presence-light.recent{background:#f0c34e;color:#f0c34e}
+.presence-light.offline{background:#f05a67;color:#f05a67}
+.session-logout-square{background:rgba(143,91,190,.2);color:#c78cff;border-color:#76509a;font-size:1rem}
+.session-logout-square svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.session-logout-square:disabled{opacity:.35;cursor:not-allowed}
+.session-transfer-notice{margin:0 0 14px;padding:13px;border:1px solid rgba(183,125,238,.65);border-radius:10px;background:rgba(93,53,125,.22);color:var(--text)}
+.session-transfer-notice p{margin:7px 0;color:var(--muted);font-size:.88rem}
+.session-transfer-actions{display:flex;gap:9px;margin-top:10px}
+.session-transfer-actions button{flex:1}
+@media(max-width:520px){.presence-light{width:8px;height:8px;min-width:8px;margin-right:5px}.session-transfer-actions{flex-direction:column}}
+.session-request-mark{font-size:.72rem;font-weight:650;color:#c78cff;margin-left:5px}
+/* Keep the temporary access restriction action amber, distinct from red re-approval. */
+.icon-button.ban-square{background:#493b21;color:#fbbf24;border-color:#80652f}

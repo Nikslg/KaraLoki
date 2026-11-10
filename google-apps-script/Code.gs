@@ -1,5 +1,5 @@
 /**
- * KaraLoki v1.8.5.1 — Google Apps Script backend.
+ * KaraLoki v1.8.7 — Google Apps Script backend.
  * Guest identity is the approved display name (case-insensitive matching).
  * Device IDs and room codes are no longer used. Google Sheets remains the database.
  * RadioLoki is a shared-name convenience gate, not secure authentication.
@@ -7,7 +7,9 @@
 const QUEUE_HEADERS = ["id","song","artist","requester","status","createdAt","position"];
 const PLAYBACK_HEADERS = ["key","value"];
 const HISTORY_HEADERS = ["id","song","artist","requester","result","playedAt","hidden","entryId","cleared"];
-const USER_HEADERS = ["name","nameKey","status","cooldownUntil","bannedUntil","createdAt","updatedAt"];
+const USER_HEADERS = ["name","nameKey","status","cooldownUntil","bannedUntil","createdAt","updatedAt"] ;
+const SESSION_HEADERS = ["nameKey","name","token","lastHeartbeat","clientInfo"];
+const TRANSFER_HEADERS = ["requestId","nameKey","name","clientInfo","createdAt","status"];
 const DEFAULT_SONG_SECONDS = 300;
 const DEFAULT_COOLDOWN_SECONDS = 900;
 const TEMP_BAN_SECONDS = 1800;
@@ -24,6 +26,8 @@ function setupKaraLoki() {
   ensureSheet_(ss, "History", HISTORY_HEADERS);
   ensureHistoryEntryIds_();
   ensureSheet_(ss, "Users", USER_HEADERS);
+  ensureSheet_(ss, "Sessions", SESSION_HEADERS);
+  ensureSheet_(ss, "SessionTransfers", TRANSFER_HEADERS);
   ensureSheet_(ss, "Settings", ["key","value"]);
   if (getRows_(ss.getSheetByName("Settings")).length===0) ss.getSheetByName("Settings").getRange(1,1,4,2).setValues([["key","value"],["autoplay","true"],["songSeconds","300"],["cooldownSeconds","900"]]);
   const pb = ss.getSheetByName("Playback");
@@ -42,15 +46,20 @@ function handle_(p) {
   const a = String(p.action || "");
   if (a === "adminCheck") { requireOwnerName_(p.ownerName); return {ok:true}; }
   if (a === "guestLogin") return guestLogin_(p);
+  if (a === "requestSessionTransfer") return requestSessionTransfer_(p);
+  if (a === "transferStatus") return transferStatus_(p);
+  if (a === "heartbeat") return heartbeat_(p);
+  if (a === "releaseSession") return releaseSession_(p);
+  if (a === "respondTransfer") return respondTransfer_(p);
   if (a === "state") {
     const admin = isOwner_(p.ownerName);
-    if (!admin) return {ok:true,state:withLock_(() => stateWhileLocked_(false, clean_(p.guestName,32)))};
+    if (!admin) return {ok:true,state:withLock_(() => stateWhileLocked_(false, clean_(p.guestName,32), String(p.sessionToken||"")))};
     return {ok:true,state:withLock_(() => stateWhileLocked_(true, ""))};
   }
   if (a === "advanceIfExpired") return withLock_(() => advanceIfExpired_());
   if (a === "add") return addSong_(p);
-  if (a === "renameGuest") return withLock_(() => { renameGuest_(p.oldName,p.newName); return {ok:true}; });
-  const adminActions = ["skip","pause","resume","move","remove","play","clearQueue","approveUser","denyUser","liftCooldown","banUser","returnToPending","hideHistory","deleteHistory","clearHistory","shuffle","reorder","saveSettings","setEventMode"];
+  if (a === "renameGuest") return withLock_(() => { if(!isOwner_(p.ownerName)) requireSession_(p.oldName,p.sessionToken); renameGuest_(p.oldName,p.newName); renameSession_(p.oldName,p.newName); return {ok:true}; });
+  const adminActions = ["skip","pause","resume","move","remove","play","clearQueue","approveUser","denyUser","liftCooldown","banUser","returnToPending","hideHistory","deleteHistory","clearHistory","shuffle","reorder","saveSettings","setEventMode","forceLogoutSession","rejectTransferRequest"];
   if (adminActions.indexOf(a) >= 0) {
     requireOwnerName_(p.ownerName);
     return withLock_(() => {
@@ -76,6 +85,8 @@ function handle_(p) {
       if (a === "reorder") reorderQueue_(String(p.ids || ""));
       if (a === "saveSettings") saveSettings_(p);
       if (a === "setEventMode") setEventMode_(String(p.enabled)==="true");
+      if (a === "forceLogoutSession") forceLogoutSession_(p.name);
+      if (a === "rejectTransferRequest") rejectTransferRequest_(p.name);
       return {ok:true};
     });
   }
@@ -87,26 +98,52 @@ function requireOwnerName_(v) { if (!isOwner_(v)) throw new Error("Owner access 
 function nameKey_(v) { return clean_(v,32).toLocaleLowerCase().replace(/\s+/g," "); }
 
 function guestLogin_(p) {
-  const name = clean_(p.name,32), key = nameKey_(name);
+  const name = clean_(p.name,32), key = nameKey_(name), suppliedToken=String(p.sessionToken||"");
   if (!name || key.length < 2) throw new Error("Введите имя длиной не менее двух символов.");
   if (key === nameKey_(OWNER_NAME)) throw new Error("Это имя зарезервировано для ведущего.");
   return withLock_(() => {
-    const user = findUser_(key), now = Date.now();
-    if (user) {
-      const bannedUntil = Number(user.bannedUntil || 0);
-      if (bannedUntil > now) return {ok:true,status:"banned",name:user.name,banRemaining:Math.ceil((bannedUntil-now)/1000)};
-      if (String(user.status) === "Confirmed") return {ok:true,status:"confirmed",name:user.name,isNew:false};
-      if (String(user.status) === "Pending") return {ok:true,status:"pending",name:user.name,isNew:false};
-      if (String(user.status) === "Denied") {
-        updateUser_(key,{status:"Pending",updatedAt:new Date()});
-        return {ok:true,status:"pending",name:user.name,isNew:false};
+    const user=findUser_(key), now=Date.now();
+    if(user){
+      const bannedUntil=Number(user.bannedUntil||0);
+      if(bannedUntil>now)return {ok:true,status:"banned",name:user.name,banRemaining:Math.ceil((bannedUntil-now)/1000)};
+      if(String(user.status)==="Confirmed"){
+        const session=findSession_(key);
+        if(session && session.token && session.token===suppliedToken){updateSessionHeartbeat_(key,suppliedToken,p.clientInfo);return {ok:true,status:"confirmed",name:user.name,sessionToken:suppliedToken};}
+        const last=Number(session?.lastHeartbeat||0),age=now-last;
+        if(session && session.token && age<60*60*1000){
+          const approved=approvedTransferFor_(key);
+          if(!approved)return {ok:true,status:"sessionOccupied",name:user.name,onlineState:age<=5*60*1000?"online":"recent",remainingSeconds:Math.ceil((60*60*1000-age)/1000)};
+        }
+        const token=Utilities.getUuid();upsertSession_(key,user.name,token,now,p.clientInfo);
+        approveWaitingTransfers_(key);
+        return {ok:true,status:"confirmed",name:user.name,sessionToken:token};
       }
+      if(String(user.status)==="Pending")return {ok:true,status:"pending",name:user.name,isNew:false};
+      if(String(user.status)==="Denied"){updateUser_(key,{status:"Pending",updatedAt:new Date()});return {ok:true,status:"pending",name:user.name,isNew:false};}
     }
-    const sh = getSS_().getSheetByName("Users");
-    sh.appendRow([name,key,"Pending",0,0,new Date(),new Date()]);
+    const sh=getSS_().getSheetByName("Users");sh.appendRow([name,key,"Pending",0,0,new Date(),new Date()]);
     return {ok:true,status:"pending",name:name,isNew:true};
   });
 }
+
+function requestSessionTransfer_(p){
+  const key=nameKey_(p.name);return withLock_(()=>{const user=findUser_(key);if(!user||String(user.status)!=="Confirmed")throw new Error("Подтверждённый пользователь не найден.");const session=findSession_(key);if(!session||!session.token||Date.now()-Number(session.lastHeartbeat||0)>=60*60*1000)return {ok:true,status:"Available"};const sh=getSS_().getSheetByName("SessionTransfers"),rows=getRows_(sh);let existing=rows.find(r=>r.nameKey===key&&r.status==="Pending");if(existing)return {ok:true,requestId:existing.requestId};const id=Utilities.getUuid();sh.appendRow([id,key,user.name,clean_(p.clientInfo,100),new Date(),"Pending"]);return {ok:true,requestId:id};});
+}
+function transferStatus_(p){return withLock_(()=>{const key=nameKey_(p.name),sess=findSession_(key);if(!sess||!sess.token||Date.now()-Number(sess.lastHeartbeat||0)>=60*60*1000)return {ok:true,status:"Available"};const rows=getRows_(getSS_().getSheetByName("SessionTransfers")),r=rows.filter(x=>x.nameKey===key).sort((a,b)=>Number(b.createdAt)-Number(a.createdAt))[0];if(r&&r.status==="Pending"&&Date.now()-Number(r.createdAt)>=180000){setTransferStatus_(r.requestId,"Expired");return {ok:true,status:"Expired"};}return {ok:true,status:r?String(r.status):"None"};});}
+function releaseSession_(p){return withLock_(()=>{const key=nameKey_(p.name),session=findSession_(key);if(session&&session.token===String(p.sessionToken||""))revokeSession_(key);return {ok:true};});}
+function heartbeat_(p){return withLock_(()=>{const key=nameKey_(p.name),token=String(p.sessionToken||""),session=findSession_(key);if(!session||!token||session.token!==token)return {ok:true,valid:false};updateSessionHeartbeat_(key,token,p.clientInfo);const requests=getRows_(getSS_().getSheetByName("SessionTransfers")).filter(r=>r.nameKey===key&&r.status==="Pending"&&Date.now()-Number(r.createdAt)<180000).map(r=>({requestId:r.requestId,clientInfo:r.clientInfo}));return {ok:true,valid:true,requests};});}
+function respondTransfer_(p){return withLock_(()=>{const key=nameKey_(p.name),token=String(p.sessionToken||""),session=findSession_(key);if(!session||session.token!==token)throw new Error("Сессия больше не активна.");const sh=getSS_().getSheetByName("SessionTransfers"),rows=getRows_(sh),r=rows.find(x=>x.requestId===String(p.requestId)&&x.nameKey===key&&x.status==="Pending");if(!r)throw new Error("Запрос уже недоступен.");const decision=String(p.decision)==="approve"?"Approved":"Rejected";setTransferStatus_(r.requestId,decision);if(decision==="Approved")revokeSession_(key);return {ok:true,status:decision};});}
+function findSession_(key){return getRows_(getSS_().getSheetByName("Sessions")).find(r=>r.nameKey===key)||null;}
+function upsertSession_(key,name,token,now,client){const sh=getSS_().getSheetByName("Sessions"),rows=getRows_(sh),i=rows.findIndex(r=>r.nameKey===key);const row=[key,name,token,now,clean_(client,100)];if(i<0)sh.appendRow(row);else sh.getRange(i+2,1,1,row.length).setValues([row]);}
+function updateSessionHeartbeat_(key,token,client){const sh=getSS_().getSheetByName("Sessions"),rows=getRows_(sh),i=rows.findIndex(r=>r.nameKey===key&&r.token===token);if(i>=0){sh.getRange(i+2,4).setValue(Date.now());if(client)sh.getRange(i+2,5).setValue(clean_(client,100));}}
+function revokeSession_(key){const sh=getSS_().getSheetByName("Sessions"),rows=getRows_(sh),i=rows.findIndex(r=>r.nameKey===key);if(i>=0)sh.getRange(i+2,3).setValue("");}
+function forceLogoutSession_(name){const key=nameKey_(name);if(!findUser_(key))throw new Error("Пользователь не найден.");revokeSession_(key);getRows_(getSS_().getSheetByName("SessionTransfers")).filter(r=>r.nameKey===key&&r.status==="Pending").forEach(r=>setTransferStatus_(r.requestId,"Approved"));}
+function rejectTransferRequest_(name){const key=nameKey_(name);getRows_(getSS_().getSheetByName("SessionTransfers")).filter(r=>r.nameKey===key&&r.status==="Pending").forEach(r=>setTransferStatus_(r.requestId,"Rejected"));}
+function setTransferStatus_(id,status){const sh=getSS_().getSheetByName("SessionTransfers"),rows=getRows_(sh),i=rows.findIndex(r=>r.requestId===id);if(i>=0)sh.getRange(i+2,6).setValue(status);}
+function approvedTransferFor_(key){const rows=getRows_(getSS_().getSheetByName("SessionTransfers"));const r=rows.filter(x=>x.nameKey===key).sort((a,b)=>Number(b.createdAt)-Number(a.createdAt))[0];return !!r&&r.status==="Approved";}
+function approveWaitingTransfers_(key){getRows_(getSS_().getSheetByName("SessionTransfers")).filter(r=>r.nameKey===key&&r.status==="Approved").forEach(r=>setTransferStatus_(r.requestId,"Consumed"));}
+function requireSession_(name,token){const key=nameKey_(name),s=findSession_(key);if(!s||!token||s.token!==String(token))throw new Error("Сессия завершена. Войдите снова.");updateSessionHeartbeat_(key,String(token));}
+function renameSession_(oldName,newName){const key=nameKey_(oldName),newKey=nameKey_(newName),s=findSession_(key);if(s){const sh=getSS_().getSheetByName("Sessions"),rows=getRows_(sh),i=rows.findIndex(r=>r.nameKey===key);if(i>=0){sh.getRange(i+2,1).setValue(newKey);sh.getRange(i+2,2).setValue(clean_(newName,32));}}const ts=getSS_().getSheetByName("SessionTransfers"),tr=getRows_(ts);tr.forEach((r,i)=>{if(r.nameKey===key){ts.getRange(i+2,2).setValue(newKey);ts.getRange(i+2,3).setValue(clean_(newName,32));}});}
 
 function addSong_(p) {
   const song = clean_(p.song,140), artist = clean_(p.artist,100), requester = clean_(p.requester,32), key = nameKey_(requester);
@@ -117,6 +154,7 @@ function addSong_(p) {
     if (!admin) {
       if (truthy_(getSettings_().eventMode)) throw new Error("Приём заявок временно приостановлен.");
       if (!user || String(user.status) !== "Confirmed") throw new Error("Ваше имя ещё не подтверждено администратором.");
+      requireSession_(requester,p.sessionToken);
       const bannedUntil = Number(user.bannedUntil || 0);
       if (bannedUntil > now) throw new Error("Заказы временно заблокированы: " + formatSeconds_(Math.ceil((bannedUntil-now)/1000)));
       const remaining = Math.ceil((Number(user.cooldownUntil || 0)-now)/1000);
@@ -132,7 +170,7 @@ function addSong_(p) {
   });
 }
 
-function stateWhileLocked_(admin, guestName) {
+function stateWhileLocked_(admin, guestName, sessionToken) {
   const ss = getSS_(); ensureCurrent_();
   let pb = getPlayback_(), rows = getRows_(ss.getSheetByName("Queue"));
   let current = rows.find(r => r.id === pb.currentSongId && r.status === "Playing") || null;
@@ -148,13 +186,19 @@ function stateWhileLocked_(admin, guestName) {
   const visibleHistory = historyRows.filter(h => !truthy_(h.hidden) && ["Completed","Skipped","Interrupted","Removed","Replayed"].includes(String(h.result)));
   const history = visibleHistory.filter(h=>!truthy_(h.cleared)).slice(-200).reverse().map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
   const playedHistory = visibleHistory.filter(h => ["Completed","Skipped","Interrupted","Replayed"].includes(String(h.result)));
-  const previous = playedHistory.slice(-2).map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:h.playedAt}));
+  const previousCutoff = serverNow - 60 * 60 * 1000;
+  const previous = playedHistory.filter(h => {
+    const finishedAt = new Date(h.playedAt).getTime();
+    return Number.isFinite(finishedAt) && finishedAt >= previousCutoff && finishedAt <= serverNow;
+  }).slice(-2).map(h => ({id:h.id,historyId:h.entryId,song:h.song,artist:h.artist,requester:h.requester,result:h.result,playedAt:new Date(h.playedAt).toISOString()}));
   const out = {current:current?publicSong_(current):null,queue,history,previous,paused:String(pb.paused)==="true",remainingSeconds:current?remaining:null,serverNow,expiresAt,eventMode:settings.eventMode,settings};
   if (admin) {
-    out.users = getRows_(ss.getSheetByName("Users")).map(user => ({name:user.name,status:user.status,cooldownRemaining:Math.max(0,Math.ceil((Number(user.cooldownUntil||0)-Date.now())/1000)),banRemaining:Math.max(0,Math.ceil((Number(user.bannedUntil||0)-Date.now())/1000))}));
+    const sessions=getRows_(ss.getSheetByName("Sessions"));
+    out.users = getRows_(ss.getSheetByName("Users")).map(user => {const sess=sessions.find(x=>x.nameKey===nameKey_(user.name));const age=sess?Date.now()-Number(sess.lastHeartbeat||0):Infinity;return {name:user.name,status:user.status,cooldownRemaining:Math.max(0,Math.ceil((Number(user.cooldownUntil||0)-Date.now())/1000)),banRemaining:Math.max(0,Math.ceil((Number(user.bannedUntil||0)-Date.now())/1000)),presence:!sess||!sess.token||age>=60*60*1000?"offline":age<=5*60*1000?"online":"recent",sessionActive:!!(sess&&sess.token&&age<60*60*1000),transferPending:getRows_(ss.getSheetByName("SessionTransfers")).some(t=>t.nameKey===nameKey_(user.name)&&t.status==="Pending"&&Date.now()-Number(t.createdAt)<180000)};});
   } else {
     const key = nameKey_(guestName), user = key ? findUser_(key) : null;
-    out.guest = user ? {name:user.name,status:user.status,cooldownRemaining:Math.max(0,Math.ceil((Number(user.cooldownUntil||0)-Date.now())/1000)),banRemaining:Math.max(0,Math.ceil((Number(user.bannedUntil||0)-Date.now())/1000))} : null;
+    const sess=user?findSession_(key):null;
+    out.guest = user ? {name:user.name,status:user.status,cooldownRemaining:Math.max(0,Math.ceil((Number(user.cooldownUntil||0)-Date.now())/1000)),banRemaining:Math.max(0,Math.ceil((Number(user.bannedUntil||0)-Date.now())/1000)),sessionValid:!!(sess&&sessionToken&&sess.token===String(sessionToken))} : null;
   }
   return out;
 }
@@ -171,7 +215,7 @@ function denyUser_(name) {
 }
 function liftCooldown_(name) { const key=nameKey_(name), user=findUser_(key); if(!user) throw new Error("Пользователь не найден."); updateUser_(key,{cooldownUntil:0,updatedAt:new Date()}); }
 function banUser_(name) { const key=nameKey_(name), user=findUser_(key); if(!user||String(user.status)!=="Confirmed") throw new Error("Подтверждённый пользователь не найден."); updateUser_(key,{bannedUntil:Date.now()+TEMP_BAN_SECONDS*1000,updatedAt:new Date()}); }
-function returnUserToPending_(name) { const key=nameKey_(name), user=findUser_(key); if(!user||String(user.status)!=="Confirmed") throw new Error("Подтверждённый пользователь не найден."); updateUser_(key,{status:"Pending",updatedAt:new Date()}); }
+function returnUserToPending_(name) { const key=nameKey_(name), user=findUser_(key); if(!user||String(user.status)!=="Confirmed") throw new Error("Подтверждённый пользователь не найден."); updateUser_(key,{status:"Pending",updatedAt:new Date()}); revokeSession_(key); }
 
 
 function renameGuest_(oldName,newName){
