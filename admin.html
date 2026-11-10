@@ -69,7 +69,7 @@
           <div class="admin-request-section">
           <h2>Заказать песню</h2>
           <form id="admin-request-form">
-            <div class="field-row">
+            <div class="field-row" id="admin-request-fields">
               <label>Название песни
                 <input id="admin-song-input" maxlength="140" placeholder="Название песни" required>
               </label>
@@ -78,6 +78,7 @@
               </label>
             </div>
             <button class="primary" id="admin-request-button" type="submit">Добавить в очередь</button>
+            <p id="admin-request-message" class="message" aria-live="polite"></p>
           </form>
           </div>
         </section>

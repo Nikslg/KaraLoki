@@ -277,7 +277,7 @@ function denyUser_(name) {
   const key=nameKey_(name), user=findUser_(key); if(!user||String(user.status)!=="Pending") throw new Error("Заявка пользователя уже недоступна.");
   updateUser_(key,{status:"Denied",updatedAt:new Date()});
 }
-function liftCooldown_(name) { const key=nameKey_(name), user=findUser_(key); if(!user) throw new Error("Пользователь не найден."); updateUser_(key,{cooldownUntil:0,updatedAt:new Date()}); }
+function liftCooldown_(name) { const key=nameKey_(name), user=findUser_(key); if(!user) throw new Error("Пользователь не найден."); updateUser_(key,{cooldownUntil:0,bannedUntil:0,updatedAt:new Date()}); }
 function banUser_(name) { const key=nameKey_(name), user=findUser_(key); if(!user||String(user.status)!=="Confirmed") throw new Error("Подтверждённый пользователь не найден."); updateUser_(key,{bannedUntil:Date.now()+TEMP_BAN_SECONDS*1000,updatedAt:new Date()}); }
 function returnUserToPending_(name) { const key=nameKey_(name), user=findUser_(key); if(!user||String(user.status)!=="Confirmed") throw new Error("Подтверждённый пользователь не найден."); updateUser_(key,{status:"Pending",updatedAt:new Date()}); revokeSession_(key); const sh=getSS_().getSheetByName("Devices"),rows=getRows_(sh);rows.forEach((r,i)=>{if(r.nameKey===key)sh.getRange(i+2,6).setValue("false");}); }
 

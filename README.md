@@ -1,4 +1,4 @@
-# KaraLoki v1.9.2
+# KaraLoki v1.9.3
 
 KaraLoki karaoke queue. The Public Queue and Admin interface remain hosted on GitHub Pages. Google Apps Script remains the backend and Google Sheets remains the database.
 
@@ -44,3 +44,13 @@ JavaScript and Apps Script syntax checks were run on the packaged source. This i
 - Cooldown and action controls are vertically centred within the confirmed-user information row.
 - Routine playback and queue actions use their local section feedback instead of also displaying the global floating loading notification. The global notification remains for Admin login/navigation loading.
 - Public song submission now hides the song and artist fields while the request is in progress, disables the submit button, and uses a client-side duplicate-submission guard. Fields return after completion; on failure, entered values are preserved for retry.
+
+
+## v1.9.3 UI and interaction corrections
+- Admin confirmed and pending user cards share the same three-column geometry: user details on the left, the centered `Ожидание` column in the same fixed position, and action buttons on the right.
+- Pending and confirmed user action buttons use matching square dimensions (50 px desktop, responsive reductions on narrow screens).
+- The Admin `Снять ожидание / блокировку` action is enabled for either an active cooldown or temporary ban; the backend now clears both `cooldownUntil` and `bannedUntil`.
+- Public and Admin song requests create a temporary semi-transparent pending queue card immediately after submission.
+- Song and artist inputs are locked during submission, and submit buttons are disabled with a client-side duplicate-request guard.
+- Admin song-request feedback is displayed inside the song-request form rather than the Queue panel.
+- On success, temporary pending cards are replaced by server queue data and fields are cleared. On failure, temporary cards are removed and original input values remain for retry.

@@ -1,12 +1,12 @@
 (() => {
-  // KaraLoki v1.9.0 — guest client.
+  // KaraLoki v1.9.3 — guest client.
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
   let guestName = localStorage.getItem(NAME_KEY) || "";
   const SESSION_KEY="karaloki_guest_session";let sessionToken=localStorage.getItem(SESSION_KEY)||"",heartbeatTimer=null;
   let lastState = null, countdownTarget = null, countdownPaused = false, initialLoadDone = false, serverOffsetMs = 0;
-  let cooldownUntil = 0, banUntil = 0, busy = false, refreshBusy = false, refreshPromise = null, nextRefreshAt = 0, retryDelay = 2000, zeroRefreshRequested = false, playbackTransitionBusy = false;
+  let cooldownUntil = 0, banUntil = 0, busy = false, pendingSongRequest = null, refreshBusy = false, refreshPromise = null, nextRefreshAt = 0, retryDelay = 2000, zeroRefreshRequested = false, playbackTransitionBusy = false;
 
   function api(action, params = {}) {
     if (!cfg.API_URL || cfg.API_URL.includes("PASTE_YOUR")) return Promise.reject(new Error("Сначала укажите URL Apps Script в файле js/config.js."));
@@ -36,7 +36,7 @@
       ...(current?[{item:current,kind:"current",number:""}]:[]),
       ...upcoming.map((item,i)=>({item,kind:"upcoming",number:String(i+1).padStart(2,"0")}))
     ];
-    if(!entries.length){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пока пуста. Закажите первую песню!";list.appendChild(li);return;}
+    if(!entries.length&&!pendingSongRequest){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пока пуста. Закажите первую песню!";list.appendChild(li);return;}
     entries.forEach(({item,kind,number})=>{
       const li=document.createElement("li");li.className=`queue-item public-queue-item ${kind}`;
       if(kind==="upcoming"&&normalizeName(item.requester)===normalizeName(guestName))li.classList.add("my-request");
@@ -49,6 +49,15 @@
       else body.append(song,requester);
       li.append(num,body);list.appendChild(li);
     });
+    if(pendingSongRequest){
+      const li=document.createElement("li");li.className="queue-item public-queue-item upcoming pending-song";
+      const icon=document.createElement("span");icon.className="queue-number";icon.textContent="◷";
+      const body=document.createElement("div");body.className="queue-item-body";
+      const song=document.createElement("div");song.className="queue-song";song.textContent=pendingSongRequest.artist?`${pendingSongRequest.song} — ${pendingSongRequest.artist}`:pendingSongRequest.song;
+      const requester=document.createElement("div");requester.className="queue-requester";requester.textContent="Ваш заказ · Отправляем...";
+      const status=document.createElement("span");status.className="pending-song-status";status.textContent="Ожидание подтверждения";
+      body.append(song,requester,status);li.append(icon,body);list.appendChild(li);
+    }
   }
   function render(state){
     lastState=state;initialLoadDone=true;$("startup-loading")?.classList.add("is-hidden");const current=state.current;
@@ -180,26 +189,26 @@
   if(document.visibilityState==="visible")startHeartbeat();
   $("request-form").addEventListener("submit",async e=>{
     e.preventDefault();
-    if(busy)return;
+    if(busy||pendingSongRequest)return;
     const song=$("song-input").value.trim(),artist=$("artist-input").value.trim();
     if(!song)return msg("request-message","Введите название песни.",true);
-    busy=true;
-    const fields=$("request-fields"),button=$("request-button"),status=$("request-message");
+    busy=true;pendingSongRequest={song,artist,id:"pending-"+Date.now()};
+    const fields=$("request-fields"),button=$("request-button");
+    if(fields)fields.querySelectorAll("input").forEach(input=>input.disabled=true);
     button.disabled=true;button.classList.add("is-loading");
-    fields?.classList.add("request-submitting-hidden");
     msg("request-message","Добавляем песню в очередь... Пожалуйста, подождите");
+    if(lastState)renderQueue(lastState);
     try{
       const result=await api("add",{song,artist,requester:guestName,sessionToken});
-      $("song-input").value="";$("artist-input").value="";
+      pendingSongRequest=null;$("song-input").value="";$("artist-input").value="";
       msg("request-message",result.message||"Песня добавлена в очередь.");
-      await refresh(true);
-      setTimeout(()=>{if(!busy&&status.textContent===(result.message||"Песня добавлена в очередь."))msg("request-message","");},3500);
+      await refresh(true);setTimeout(()=>{if(!busy)msg("request-message","");},3500);
     }catch(err){
-      msg("request-message",err.message||"Не удалось добавить песню.",true);
-      await refresh(true);
+      pendingSongRequest=null;msg("request-message",err.message||"Не удалось добавить песню.",true);
+      if(lastState)renderQueue(lastState);await refresh(true);
     }finally{
-      busy=false;fields?.classList.remove("request-submitting-hidden");
-      button.classList.remove("is-loading");updateRestrictions();
+      busy=false;if(fields)fields.querySelectorAll("input").forEach(input=>input.disabled=false);
+      button.classList.remove("is-loading");updateRestrictions();if(lastState)renderQueue(lastState);
     }
   });
   if(guestName){$("guest-name-input").value=guestName;showOnly("guest-pending-panel");$("pending-name").textContent=guestName;}else showOnly("guest-login-panel");
