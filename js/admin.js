@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.9.3 — admin client.
+  // KaraLoki v1.9.4 — admin client.
   "use strict";
   const cfg=window.KARALOKI_CONFIG||{},$=id=>document.getElementById(id),ADMIN_TOKEN_KEY="karaloki_admin_token",ADMIN_NAME_KEY="karaloki_admin_username";
   let adminToken=sessionStorage.getItem(ADMIN_TOKEN_KEY)||"",adminUsername=sessionStorage.getItem(ADMIN_NAME_KEY)||"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,pendingAdminSong=null,adminSongBusy=false,refreshBusy=false,refreshPromise=null,nextRefreshAt=0,retryDelay=2000,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false;
@@ -25,102 +25,29 @@
   function time(s){s=Math.max(0,Math.floor(Number(s)||0));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
   function label(item){return item.artist?`${item.song} — ${item.artist}`:item.song;}
   function normalizeName(value){return String(value||"").trim().replace(/\s+/g," ").toLocaleLowerCase();}
-  const messageTimers=new Map();
+  const globalNotices=new Map();let noticeSequence=0;
+  function renderGlobalNotices(){
+    const host=$("global-notifications");if(!host)return;host.replaceChildren();
+    [...globalNotices.values()].sort((x,y)=>y.created-x.created).slice(0,4).forEach(n=>{
+      const item=document.createElement("div");item.className=`global-notice ${n.error?"is-error":n.loading?"is-loading":"is-success"}`;
+      const icon=document.createElement("span");icon.className="global-notice-icon";icon.textContent=n.loading?"◌":n.error?"!":"✓";
+      const text=document.createElement("span");text.className="global-notice-text";text.textContent=n.text;item.append(icon,text);
+      if(n.error){const close=document.createElement("button");close.type="button";close.className="global-notice-close";close.textContent="×";close.setAttribute("aria-label","Закрыть");close.addEventListener("click",()=>{globalNotices.delete(n.id);renderGlobalNotices();});item.append(close);}
+      host.append(item);
+    });
+  }
   function message(id,value,error=false){
-    const el=$(id);if(!el)return;
-    const oldTimer=messageTimers.get(id);if(oldTimer)clearTimeout(oldTimer);
-    el.textContent=value||"";el.style.color=error?"#ff9c9c":"";
-    el.classList.toggle("hidden",!value);
-    if(value&&!error){
-      const timer=setTimeout(()=>{el.textContent="";el.classList.add("hidden");messageTimers.delete(id);},4500);
-      messageTimers.set(id,timer);
-    }
+    const old=globalNotices.get(id);if(old?.timer)clearTimeout(old.timer);
+    if(!value){globalNotices.delete(id);renderGlobalNotices();return;}
+    const loading=/ожидайте|добавляем|проверяем|выполняем|сохраняем|обновляем|отправляем|подключаем|загружаем|изменяем|приостанавливаем|возобновляем/i.test(value);
+    const notice={id,text:String(value),error,loading,created:++noticeSequence,timer:null};
+    if(!error&&!loading)notice.timer=setTimeout(()=>{globalNotices.delete(id);renderGlobalNotices();},4000);
+    globalNotices.set(id,notice);
+    if(globalNotices.size>4){const oldest=[...globalNotices.values()].sort((x,y)=>x.created-y.created)[0];if(oldest?.timer)clearTimeout(oldest.timer);globalNotices.delete(oldest.id);}
+    renderGlobalNotices();
   }
-  function unlocked(on){$("login-panel").classList.toggle("hidden",on);$("admin-content").classList.toggle("hidden",!on);}
-  function makeButton(text,title,handler,classes=""){const b=document.createElement("button");b.type="button";b.className="icon-button square-action "+classes;b.textContent=text;b.title=title;b.setAttribute("aria-label",title);b.addEventListener("click",handler);return b;}
-  const historyIconMarkup={
-    play:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/></svg>',
-    hide:'<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c5 0 8.3 4.5 9 7-.3 1.1-1.1 2.4-2.3 3.5"/><path d="M6.2 6.2C3.9 7.6 2.3 10 2 12c.7 2.5 4 7 10 7 1.1 0 2.1-.2 3-.5"/></svg>',
-    delete:'<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/></svg>'
-  };
-  function makeHistoryIconButton(icon,title,handler,classes=""){const b=makeButton("",title,handler,"history-action-icon "+classes);b.innerHTML=historyIconMarkup[icon];b.dataset.iconMarkup=historyIconMarkup[icon];return b;}
-  function recentPrevious(items){const now=Date.now()+serverOffsetMs,cutoff=now-60*60*1000;return (items||[]).filter(item=>{const t=new Date(item.playedAt||0).getTime();return Number.isFinite(t)&&t>=cutoff&&t<=now;}).slice(-2);}
-  function renderSongList(listId,items,mode){
-    const list=$(listId);list.replaceChildren();
-    if(!items||!items.length){const li=document.createElement("li");li.className="empty";li.textContent=mode==="history"?"История пока пуста.":mode==="recent"?"История воспроизведения пока пуста.":"Очередь пуста.";list.appendChild(li);return;}
-    items.forEach((item,i)=>{
-      const li=document.createElement("li");li.className="queue-item admin-queue-item";
-      const num=document.createElement("span");num.className="queue-number";num.textContent=mode==="history"?"◷":mode==="recent"?"":String(i+1).padStart(2,"0");
-      const body=document.createElement("div");body.className="queue-item-body";
-      const song=document.createElement("div");song.className="queue-song";song.textContent=label(item);
-      const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=`${item.requester||"—"}${item.result?" · "+historyStatus(item.result):""}`;
-      body.append(song,requester);const actions=document.createElement("div");actions.className="queue-actions";
-      if(mode==="queue"||mode==="history"){const play=mode==="history"?makeHistoryIconButton("play","Добавить следующей после текущей",()=>playLocked(item,mode,play)):makeButton("▶","Воспроизвести сейчас",()=>playLocked(item,mode,play));actions.append(play);}
-      if(mode==="queue"){
-        const up=makeButton("↑","Переместить выше",()=>moveOptimistic(item.id,"up"));up.disabled=i===0;
-        const down=makeButton("↓","Переместить ниже",()=>moveOptimistic(item.id,"down"));down.disabled=i===items.length-1;
-        actions.append(up,down,makeButton("×","Удалить из очереди",()=>queueAction("remove",item.id),"remove-button"));
-      }else if(mode==="history"){
-        actions.append(makeHistoryIconButton("hide","Скрыть из истории",()=>adminAction("hideHistory",{historyId:item.historyId})),makeHistoryIconButton("delete","Удалить запись истории",()=>{if(confirm("Удалить эту запись из истории навсегда?"))adminAction("deleteHistory",{historyId:item.historyId});},"remove-button"));
-      }
-      li.append(num,body,actions);list.appendChild(li);
-    });
-  }
-
-  let queueDragActive=false,activeDraggedElement=null;
-  function renderCombinedQueue(state){
-    const list=$("queue-list");list.replaceChildren();
-    const entries=[...recentPrevious(state.previous).map(x=>({item:x,kind:"previous"})),...(state.current?[{item:state.current,kind:"current"}]:[]),...(state.queue||[]).map((x,i)=>({item:x,kind:"upcoming",index:i}))];
-    if(!entries.length){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пуста.";list.append(li);return;}
-    entries.forEach(({item,kind,index})=>{
-      const li=document.createElement("li");li.className="queue-item admin-queue-item public-queue-item "+kind;li.dataset.songId=item.id;
-      if(kind==="upcoming"&&normalizeName(item.requester)===normalizeName(adminUsername))li.classList.add("my-request");
-      const num=document.createElement("span");num.className="queue-number";num.textContent=kind==="upcoming"?String(index+1).padStart(2,"0"):kind==="current"?"▶":kind==="previous"?"◷":"";
-      const body=document.createElement("div");body.className="queue-item-body";
-      const song=document.createElement("div");song.className="queue-song";song.textContent=label(item);
-      const requester=document.createElement("div");requester.className="queue-requester";
-      const stamp=item.requestedAt?new Date(Number(item.requestedAt)).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}):"";
-      requester.textContent=`${item.requester||"—"}${stamp?" · Заказ: "+stamp:""}`;body.append(song,requester);li.append(num,body);
-      if(kind==="current"){const marker=document.createElement("span");marker.className="current-queue-marker";marker.textContent="СЕЙЧАС ИГРАЕТ";body.prepend(marker);}
-      if(kind==="upcoming"){
-        const actions=document.createElement("div");actions.className="queue-actions";
-        actions.append(makeButton("▶","Воспроизвести сейчас",()=>adminAction("play",{songId:item.id})));
-        const up=makeButton("↑","Переместить выше",()=>moveOptimistic(item.id,"up"));up.disabled=index===0;
-        const down=makeButton("↓","Переместить ниже",()=>moveOptimistic(item.id,"down"));down.disabled=index===(state.queue||[]).length-1;
-        actions.append(up,down);
-        const drag=makeButton("","Включить перемещение этой песни",()=>{li.draggable=!li.draggable;li.classList.toggle("drag-armed",li.draggable);drag.title=li.draggable?"Перетащите песню на новое место":"Включить перемещение этой песни";});
-        drag.classList.add("drag-handle");drag.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2v20M2 12h20M12 2l-3 3m3-3 3 3M12 22l-3-3m3 3 3-3M2 12l3-3m-3 3 3 3m16-3-3-3m3 3-3 3"/></svg>';actions.append(drag);
-        actions.append(makeButton("×","Удалить из очереди",()=>queueAction("remove",item.id),"remove-button"));li.append(actions);
-        li.addEventListener("dragstart",e=>{if(!li.draggable){e.preventDefault();return;}queueDragActive=true;activeDraggedElement=li;list.classList.add("is-reordering");e.dataTransfer.setData("text/plain",item.id);e.dataTransfer.effectAllowed="move";});
-        li.addEventListener("dragover",e=>{if(!queueDragActive||!e.dataTransfer.types.includes("text/plain"))return;e.preventDefault();const moving=activeDraggedElement;if(!moving||moving===li)return;const rect=li.getBoundingClientRect();const after=e.clientY>rect.top+rect.height/2;list.insertBefore(moving,after?li.nextSibling:li);});
-        li.addEventListener("drop",e=>{e.preventDefault();if(!queueDragActive)return;const ids=Array.from(list.querySelectorAll("li.upcoming[data-song-id]")).map(x=>x.dataset.songId);queueDragActive=false;activeDraggedElement=null;list.classList.remove("is-reordering");list.querySelectorAll(".drag-armed").forEach(x=>{x.draggable=false;x.classList.remove("drag-armed")});optimisticOps++;api("reorder",{ids:JSON.stringify(ids)}).then(()=>refresh(true)).catch(e=>{message("queue-message",e.message,true);refresh(true);}).finally(()=>{optimisticOps=Math.max(0,optimisticOps-1);refresh(true);});});
-        li.addEventListener("dragend",()=>{queueDragActive=false;activeDraggedElement=null;list.classList.remove("is-reordering");li.draggable=false;li.classList.remove("drag-armed");});
-      }
-      list.append(li);
-    });
-    if(pendingAdminSong){
-      const li=document.createElement("li");li.className="queue-item admin-queue-item public-queue-item upcoming pending-song";
-      const num=document.createElement("span");num.className="queue-number";num.textContent="◷";
-      const body=document.createElement("div");body.className="queue-item-body";
-      const song=document.createElement("div");song.className="queue-song";song.textContent=pendingAdminSong.artist?`${pendingAdminSong.song} — ${pendingAdminSong.artist}`:pendingAdminSong.song;
-      const requester=document.createElement("div");requester.className="queue-requester";requester.textContent="Ваш заказ · Отправляем...";
-      const status=document.createElement("span");status.className="pending-song-status";status.textContent="Ожидание подтверждения";
-      body.append(song,requester,status);li.append(num,body);list.append(li);
-    }
-  }
-  const playingLocks=new Set();
-  async function playLocked(item,mode,button){const key=String(item.historyId||item.id);if(playingLocks.has(key))return;playingLocks.add(key);if(button){button.disabled=true;button.textContent="…";}try{await api("play",{songId:item.id,...(mode==="history"?{source:"history"}:{})});await refresh(true);message("queue-message",mode==="history"?"Песня добавлена следующей после текущей.":"Песня запущена.");}catch(e){message("queue-message",e.message,true);}finally{playingLocks.delete(key);if(button&&button.isConnected){button.disabled=false;if(button.dataset.iconMarkup)button.innerHTML=button.dataset.iconMarkup;else button.textContent="▶";}}}
-  function historyStatus(s){return({Completed:"Исполнена",Skipped:"Пропущена",Interrupted:"Прервана",Removed:"Удалена",Replayed:"Повтор"})[s]||s;}
-  async function approveUserOptimistic(name,row){
-    const key=normalizeName(name);if(rowLocks.has(key))return;rowLocks.add(key);optimisticOps++;const originalUsers=(lastState?.users||[]).map(u=>({...u}));
-    if(lastState){lastState.users=lastState.users.filter(u=>!(normalizeName(u.name)===key&&u.status==="Pending"));renderUsers(lastState.users);}
-    row?.classList.add("is-pending-action");const feedback=getUserFeedback(name,row);inlineUserMessage(feedback,"Подтверждаем пользователя…");
-    try{await api("approveUser",{name});inlineUserMessage(feedback,`Пользователь «${name}» подтверждён.`);await refresh(true);}
-    catch(e){if(lastState){lastState.users=originalUsers;renderUsers(lastState.users);}const restored=getUserFeedback(name,getUserRow(name));inlineUserMessage(restored,e.message||"Не удалось подтвердить пользователя.",true);}
-    finally{rowLocks.delete(key);optimisticOps=Math.max(0,optimisticOps-1);await refresh(true);}
-  }
-  function showLoading(text){pendingOps++;const el=$("admin-loading");if(el){el.classList.remove("hidden");$("admin-loading-text").textContent=text||"Выполняем действие…";}}
-  function hideLoading(){pendingOps=Math.max(0,pendingOps-1);if(!pendingOps)$("admin-loading")?.classList.add("hidden");}
+  function showLoading(text){message("global-loading",text||"Выполняем действие…");}
+  function hideLoading(){message("global-loading","");}
   async function moveOptimistic(songId,direction){
     if(busy||!lastState)return;optimisticOps++;const q=[...(lastState.queue||[])],i=q.findIndex(x=>x.id===songId),j=direction==="up"?i-1:i+1;if(i<0||j<0||j>=q.length){optimisticOps=Math.max(0,optimisticOps-1);return;}[q[i],q[j]]=[q[j],q[i]];const old=lastState.queue;lastState.queue=q;renderCombinedQueue(lastState);
     message("queue-message","Обновляем порядок очереди…");try{await api("move",{songId,direction});await refresh(true);message("queue-message","Порядок очереди обновлён.");}catch(e){lastState.queue=old;renderCombinedQueue(lastState);message("queue-message",e.message,true);}finally{optimisticOps=Math.max(0,optimisticOps-1);await refresh(true);}

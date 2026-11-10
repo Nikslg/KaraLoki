@@ -552,3 +552,27 @@ body{
   .unified-user-actions .icon-button.square-action,
   .pending-user-actions .icon-button.square-action{width:32px;height:32px;min-width:32px;max-width:32px;font-size:.9rem}
 }
+
+
+/* v1.9.4 — shared cascading global notifications */
+.global-notifications{
+  position:fixed;z-index:99999;top:14px;left:50%;transform:translateX(-50%);
+  width:min(520px,calc(100vw - 24px));display:flex;flex-direction:column;gap:8px;
+  pointer-events:none;
+}
+.global-notice{
+  display:flex;align-items:center;gap:10px;min-height:44px;padding:10px 13px;
+  border:1px solid var(--border);border-radius:11px;background:rgba(20,27,38,.96);
+  color:#f4f7fb;box-shadow:0 8px 28px rgba(0,0,0,.28);backdrop-filter:blur(10px);
+  pointer-events:auto;animation:globalNoticeIn .18s ease-out;
+}
+.global-notice-icon{width:22px;height:22px;flex:0 0 22px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:rgba(255,255,255,.12)}
+.global-notice-text{flex:1;min-width:0;font-size:.9rem;line-height:1.35;overflow-wrap:anywhere}
+.global-notice.is-success .global-notice-icon{color:#7ee0ad}
+.global-notice.is-loading .global-notice-icon{color:#8ecbff;animation:globalSpin 1.1s linear infinite}
+.global-notice.is-error{border-color:rgba(255,105,105,.65)}
+.global-notice.is-error .global-notice-icon{color:#ff8585}
+.global-notice-close{border:0;background:transparent;color:#fff;font-size:1.25rem;cursor:pointer;padding:0 4px}
+@keyframes globalNoticeIn{from{opacity:0;transform:translateY(-7px)}to{opacity:1;transform:translateY(0)}}
+@keyframes globalSpin{to{transform:rotate(360deg)}}
+#admin-loading{display:none!important}

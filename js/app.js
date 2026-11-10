@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.9.3 — guest client.
+  // KaraLoki v1.9.4 — guest client.
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
@@ -21,7 +21,29 @@
       script.src = cfg.API_URL + (cfg.API_URL.includes("?")?"&":"?") + query.toString(); document.body.appendChild(script);
     });
   }
-  function msg(id,value,error=false){$(id).textContent=value||"";$(id).style.color=error?"#ff9c9c":"";}
+  const globalNotices=new Map();let noticeSequence=0;
+  function renderGlobalNotices(){
+    const host=$("global-notifications");if(!host)return;
+    host.replaceChildren();
+    [...globalNotices.values()].sort((x,y)=>y.created-x.created).slice(0,4).forEach(n=>{
+      const item=document.createElement("div");item.className=`global-notice ${n.error?"is-error":n.loading?"is-loading":"is-success"}`;
+      const icon=document.createElement("span");icon.className="global-notice-icon";icon.textContent=n.loading?"◌":n.error?"!":"✓";
+      const text=document.createElement("span");text.className="global-notice-text";text.textContent=n.text;
+      item.append(icon,text);
+      if(n.error){const close=document.createElement("button");close.type="button";close.className="global-notice-close";close.textContent="×";close.setAttribute("aria-label","Закрыть");close.addEventListener("click",()=>{globalNotices.delete(n.id);renderGlobalNotices();});item.append(close);}
+      host.append(item);
+    });
+  }
+  function msg(id,value,error=false){
+    const old=globalNotices.get(id);if(old?.timer)clearTimeout(old.timer);
+    if(!value){globalNotices.delete(id);renderGlobalNotices();return;}
+    const loading=/ожидайте|добавляем|проверяем|выполняем|сохраняем|обновляем|отправляем|подключаем|загружаем/i.test(value);
+    const notice={id,text:String(value),error,loading,created:++noticeSequence,timer:null};
+    if(!error&&!loading)notice.timer=setTimeout(()=>{globalNotices.delete(id);renderGlobalNotices();},4000);
+    globalNotices.set(id,notice);
+    if(globalNotices.size>4){const oldest=[...globalNotices.values()].sort((x,y)=>x.created-y.created)[0];if(oldest?.timer)clearTimeout(oldest.timer);globalNotices.delete(oldest.id);}
+    renderGlobalNotices();
+  }
   function time(s){s=Math.max(0,Math.floor(Number(s)||0));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
   function songLabel(item){return item.artist?`${item.song} — ${item.artist}`:item.song;}
   function normalizeName(value){return String(value||"").trim().replace(/\s+/g," ").toLocaleLowerCase();}
@@ -195,7 +217,7 @@
     busy=true;pendingSongRequest={song,artist,id:"pending-"+Date.now()};
     const fields=$("request-fields"),button=$("request-button");
     if(fields)fields.querySelectorAll("input").forEach(input=>input.disabled=true);
-    button.disabled=true;button.classList.add("is-loading");
+    button.disabled=true;button.classList.add("is-loading");button.textContent="Добавить в очередь";
     msg("request-message","Добавляем песню в очередь... Пожалуйста, подождите");
     if(lastState)renderQueue(lastState);
     try{
