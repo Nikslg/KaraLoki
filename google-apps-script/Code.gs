@@ -288,17 +288,20 @@ function renameGuest_(oldName,newName){
   if(newKey===nameKey_(getAdminRecord_().username))throw new Error("Это имя зарезервировано для ведущего.");
   const sh=getSS_().getSheetByName("Users"),rows=getRows_(sh),user=rows.find(r=>String(r.nameKey||nameKey_(r.name))===oldKey);
   if(!user)throw new Error("Пользователь не найден.");
-  const collision=rows.find(r=>String(r.nameKey||nameKey_(r.name))===newKey && String(r.nameKey||nameKey_(r.name))!==oldKey);
-  if(collision){
-    if(String(collision.status)!=="Denied")throw new Error("Это имя уже занято. Выберите другое.");
-    // A rejected registration is historical, not a permanent reservation of the name.
-    // Remove its stale identity rows so the active user's rename can safely reuse the name.
+  const collisions=rows.filter(r=>String(r.nameKey||nameKey_(r.name))===newKey && String(r.nameKey||nameKey_(r.name))!==oldKey);
+  if(collisions.some(r=>String(r.status)!=="Denied"))throw new Error("Это имя уже занято. Выберите другое.");
+  if(collisions.length){
+    // A rejected registration is historical, not a permanent reservation.
+    // Remove every denied duplicate and all stale identity rows for that normalized name.
     const sessions=getSS_().getSheetByName("Sessions"),sessionRows=getRows_(sessions);
-    for(let i=sessionRows.length-1;i>=0;i--)if(sessionRows[i].nameKey===newKey)sessions.deleteRow(i+2);
+    for(let i=sessionRows.length-1;i>=0;i--)if(String(sessionRows[i].nameKey)===newKey)sessions.deleteRow(i+2);
     const devices=getSS_().getSheetByName("Devices"),deviceRows=getRows_(devices);
-    for(let i=deviceRows.length-1;i>=0;i--)if(deviceRows[i].nameKey===newKey)devices.deleteRow(i+2);
-    const all=sh.getDataRange().getValues(),headers=all[0].map(String),deniedIndex=all.findIndex((r,i)=>i>0&&String(r[headers.indexOf("nameKey")]||nameKey_(r[headers.indexOf("name")]))===newKey);
-    if(deniedIndex>0)sh.deleteRow(deniedIndex+1);
+    for(let i=deviceRows.length-1;i>=0;i--)if(String(deviceRows[i].nameKey)===newKey)devices.deleteRow(i+2);
+    const all=sh.getDataRange().getValues(),headers=all[0].map(String),keyCol=headers.indexOf("nameKey"),nameCol=headers.indexOf("name");
+    for(let i=all.length-1;i>0;i--){
+      const rowKey=String(all[i][keyCol]||nameKey_(all[i][nameCol]));
+      if(rowKey===newKey && String(all[i][headers.indexOf("status")])==="Denied")sh.deleteRow(i+1);
+    }
   }
   const values=sh.getDataRange().getValues(),headers=values[0].map(String),rowIndex=values.findIndex((r,i)=>i>0&&String(r[headers.indexOf("nameKey")]||nameKey_(r[headers.indexOf("name")]))===oldKey);
   if(rowIndex<1)throw new Error("Пользователь не найден.");

@@ -556,7 +556,7 @@ body{
 
 /* v1.9.4 — shared cascading global notifications */
 .global-notifications{
-  position:fixed;z-index:99999;top:42%;left:50%;transform:translate(-50%,-50%);
+  position:fixed;z-index:99999;top:75%;left:50%;transform:translate(-50%,-50%);
   width:min(520px,calc(100vw - 24px));display:flex;flex-direction:column;gap:8px;
   pointer-events:none;
 }
@@ -576,3 +576,9 @@ body{
 @keyframes globalNoticeIn{from{opacity:0;transform:translateY(-7px)}to{opacity:1;transform:translateY(0)}}
 @keyframes globalSpin{to{transform:rotate(360deg)}}
 #admin-loading{display:none!important}
+
+/* v1.9.4.3: consistent bottom navigation across public, queue-only and admin pages */
+.footer-nav{display:flex;align-items:center;gap:14px;width:100%;box-sizing:border-box}
+.footer-nav .footer-spacer{flex:1}
+.footer-nav a[aria-current="page"]{color:var(--accent,#18c7aa);pointer-events:none}
+.queue-only-page>.panel{min-height:180px}

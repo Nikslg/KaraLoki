@@ -1,4 +1,4 @@
-# KaraLoki v1.9.4.1.1
+# KaraLoki v1.9.4.3
 
 KaraLoki karaoke queue. The Public Queue and Admin interface remain hosted on GitHub Pages. Google Apps Script remains the backend and Google Sheets remains the database.
 
@@ -56,16 +56,16 @@ JavaScript and Apps Script syntax checks were run on the packaged source. This i
 - On success, temporary pending cards are replaced by server queue data and fields are cleared. On failure, temporary cards are removed and original input values remain for retry.
 
 
-## v1.9.4.1 notification system
+## v1.9.4.3 notification system
 - Restored a global overlay notification panel on both Public Queue and Admin pages.
 - Notifications cascade newest-first, with a maximum of four visible entries.
 - Loading notices remain until cleared by their operation; success notices expire after four seconds; errors remain until dismissed or replaced.
 - Repeated updates with the same message key replace that notification rather than creating duplicates.
 - User-card-specific action feedback remains attached to its own user card; pending-song queue cards remain separate client-side optimistic UI elements.
-- Updated public and Admin document titles to v1.9.4.1.
+- Updated public and Admin document titles to v1.9.4.3.
 
 
-## v1.9.4.1 hotfix
+## v1.9.4.3 hotfix
 
 - Added the missing Admin `unlocked()` panel-switching function.
 - A previously rejected username can be reused during rename; only the stale `Denied` user record and its obsolete session/device records are cleared.
@@ -73,3 +73,19 @@ JavaScript and Apps Script syntax checks were run on the packaged source. This i
 - Global notifications are positioned near the centre of the screen.
 
 Apply the frontend files to GitHub Pages and replace `Code.gs` in the existing Apps Script project, then deploy a new Apps Script version. No spreadsheet reset or migration is required.
+
+
+## v1.9.4.3 hotfix
+- Declared queueDragActive to prevent the Admin refresh ReferenceError.
+- Moved global notifications to top: 75%.
+- Added cache-busting query versions to the shared stylesheet and Admin script.
+
+
+## v1.9.4.3 — Страница Очередей
+- Добавлена отдельная страница `queue.html` — только текущая композиция, статус воспроизведения и список очереди.
+- Страница открыта для просмотра без входа, подтверждения имени и возможности менять порядок или отправлять заявки.
+- В нижней навигации добавлена ссылка «Страница Очередей» слева от панели ведущего.
+- Исправлена гонка heartbeat при переименовании пользователя: перед сменой имени клиент дожидается незавершённого heartbeat, а ответ со старой идентичностью не может завершить новую сессию.
+- Повторное использование ранее отклонённого имени очищает все совпадающие исторические записи Denied, но по-прежнему блокируется при наличии любого активного совпадения.
+- Обновлены cache-busting версии CSS и JavaScript.
+- Сохранены изменения v1.9.4.2, включая уведомления на позиции 75% экрана и исправления Admin UI.

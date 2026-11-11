@@ -1,10 +1,10 @@
 (() => {
-  // KaraLoki v1.9.4.1 — guest client.
+  // KaraLoki v1.9.4.3 — guest client.
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
   let guestName = localStorage.getItem(NAME_KEY) || "";
-  const SESSION_KEY="karaloki_guest_session";let sessionToken=localStorage.getItem(SESSION_KEY)||"",heartbeatTimer=null;
+  const SESSION_KEY="karaloki_guest_session";let sessionToken=localStorage.getItem(SESSION_KEY)||"",heartbeatTimer=null,heartbeatInFlight=null,renameInProgress=false;
   let lastState = null, countdownTarget = null, countdownPaused = false, initialLoadDone = false, serverOffsetMs = 0;
   let cooldownUntil = 0, banUntil = 0, busy = false, pendingSongRequest = null, refreshBusy = false, refreshPromise = null, nextRefreshAt = 0, retryDelay = 2000, zeroRefreshRequested = false, playbackTransitionBusy = false;
 
@@ -158,9 +158,11 @@
     const next=prompt("Введите новое имя:",oldName);if(next===null)return;const clean=next.trim().replace(/\s+/g," ");if(clean.length<2)return msg("guest-login-message","Введите имя длиной не менее двух символов.",true);
     if(normalizeName(clean)===normalizeName(oldName))return;
     const buttonIds=["pending-rename","confirmed-rename"];buttonIds.forEach(id=>{const b=$(id);if(b)b.disabled=true;});
+    renameInProgress=true;
     stopHeartbeat();
     try{
-      // Finish any state request made with the old name before changing the server key.
+      // Drain requests using the old identity before changing the server-side session key.
+      if(heartbeatInFlight)await heartbeatInFlight.catch(()=>{});
       if(refreshPromise)await refreshPromise;
       await api("renameGuest",{oldName,newName:clean,sessionToken:token});
       guestName=clean;sessionToken=token;
@@ -170,8 +172,8 @@
       msg("pending-message","Имя изменено.");
       await refresh(true);
       if(sessionToken)startHeartbeat();
-    }catch(err){if(sessionToken)startHeartbeat();msg("pending-message",err.message,true);}
-    finally{buttonIds.forEach(id=>{const b=$(id);if(b)b.disabled=false;});}
+    }catch(err){msg("pending-message",err.message,true);}
+    finally{renameInProgress=false;if(sessionToken)startHeartbeat();buttonIds.forEach(id=>{const b=$(id);if(b)b.disabled=false;});}
   }
   ["pending-rename","confirmed-rename"].forEach(id=>$(id)?.addEventListener("click",changeGuestName));
   function logout(){stopHeartbeat();
@@ -198,19 +200,22 @@
   }
   $("occupied-cancel")?.addEventListener("click",()=>{guestName="";localStorage.removeItem(NAME_KEY);showOnly("guest-login-panel");});
   async function heartbeat(){
-    if(document.visibilityState!=="visible"||!guestName||!sessionToken)return;
+    if(document.visibilityState!=="visible"||!guestName||!sessionToken||renameInProgress)return;
     const heartbeatName=guestName,heartbeatToken=sessionToken;
-    try{
-      const r=await api("heartbeat",{name:heartbeatName,sessionToken:heartbeatToken,clientInfo:clientInfo()});
-      // A heartbeat sent before a rename may finish afterwards; it must not clear the new identity.
-      if(heartbeatName!==guestName||heartbeatToken!==sessionToken)return;
-      if(!r.valid){
-        stopHeartbeat();
-        sessionToken="";localStorage.removeItem(SESSION_KEY);guestName="";localStorage.removeItem(NAME_KEY);
-        showOnly("guest-login-panel");
-        msg("guest-login-message","Сессия завершена администратором или истекла.",true);
-      }
-    }catch(_){}
+    const request=(async()=>{
+      try{
+        const r=await api("heartbeat",{name:heartbeatName,sessionToken:heartbeatToken,clientInfo:clientInfo()});
+        if(renameInProgress||heartbeatName!==guestName||heartbeatToken!==sessionToken)return;
+        if(!r.valid){
+          stopHeartbeat();
+          sessionToken="";localStorage.removeItem(SESSION_KEY);guestName="";localStorage.removeItem(NAME_KEY);
+          showOnly("guest-login-panel");
+          msg("guest-login-message","Сессия завершена администратором или истекла.",true);
+        }
+      }catch(_){}
+    })();
+    heartbeatInFlight=request;
+    try{await request;}finally{if(heartbeatInFlight===request)heartbeatInFlight=null;}
   }
   function stopHeartbeat(){if(heartbeatTimer){clearInterval(heartbeatTimer);heartbeatTimer=null;}}
   function startHeartbeat(){

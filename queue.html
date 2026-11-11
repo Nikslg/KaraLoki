@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090914">
+  <title>KaraLoki v1.9.4.3 — Страница Очередей</title>
+  <link rel="stylesheet" href="css/style.css?v=1943">
+</head>
+<body>
+  <div id="startup-loading" class="startup-loading" role="status" aria-live="polite">
+    <div class="loading-mark">KaraLoki</div><div class="loading-spinner"></div>
+    <div class="loading-text" id="startup-loading-text">Подключаемся к очереди…</div>
+  </div>
+  <header class="site-header">
+    <div class="brand">KaraLoki</div>
+    <div class="now-playing">
+      <div class="eyebrow">СЕЙЧАС ИСПОЛНЯЕТСЯ</div>
+      <div id="current-song" class="current-title">Пока ничего не играет</div>
+      <div id="current-requester" class="muted">Загружаем очередь…</div>
+      <div class="timer-line"><span id="playback-state" class="status-pill">Ожидание</span><span id="countdown" class="countdown">—</span></div>
+    </div>
+  </header>
+  <main class="page queue-only-page">
+    <section class="panel">
+      <div class="section-heading"><h2>Трэклист</h2><span id="queue-count" class="count-pill">0 песен</span></div>
+      <ol id="queue-list" class="queue-list"><li class="empty">Загружаем очередь…</li></ol>
+      <p id="queue-error" class="message hidden" role="status" aria-live="polite"></p>
+    </section>
+    <footer class="footer footer-nav muted"><a href="queue.html" aria-current="page">Страница Очередей</a><span class="footer-spacer"></span><a href="admin.html">Панель ведущего</a></footer>
+  </main>
+  <script src="js/config.js?v=1943"></script>
+  <script src="js/queue.js?v=1943"></script>
+</body>
+</html>
