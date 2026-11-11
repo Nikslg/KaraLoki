@@ -1,8 +1,9 @@
 (() => {
-  // KaraLoki v1.9.4.4 — admin client.
+  // KaraLoki v1.9.4.5 — admin client.
   "use strict";
   const cfg=window.KARALOKI_CONFIG||{},$=id=>document.getElementById(id),ADMIN_TOKEN_KEY="karaloki_admin_token",ADMIN_NAME_KEY="karaloki_admin_username";
   let adminToken=sessionStorage.getItem(ADMIN_TOKEN_KEY)||"",adminUsername=sessionStorage.getItem(ADMIN_NAME_KEY)||"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,pendingAdminSong=null,adminSongBusy=false,refreshBusy=false,refreshPromise=null,nextRefreshAt=0,retryDelay=2000,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false,queueDragActive=false;
+  let activeDraggedElement=null;const playingLocks=new Set();
   const playbackActionQueue=[]; let playbackQueueRunning=false,playbackConfirmedState=null,lastConfirmedPlaybackState=null;
   const logoutActionQueue=[];let logoutQueueRunning=false;const userActionLocks=new Set();const userInlineNotices=new Map();
   const rowLocks=new Set(); let pendingOps=0,optimisticOps=0;
@@ -26,7 +27,76 @@
   function label(item){return item.artist?`${item.song} — ${item.artist}`:item.song;}
   function normalizeName(value){return String(value||"").trim().replace(/\s+/g," ").toLocaleLowerCase();}
   function unlocked(value){$("login-panel")?.classList.toggle("hidden",!!value);$("admin-content")?.classList.toggle("hidden",!value);}
-  const globalNotices=new Map();let noticeSequence=0;
+  function makeButton(text,title,onClick,className=""){
+    const button=document.createElement("button");button.type="button";button.className=`icon-button ${className}`.trim();button.textContent=text;button.title=title;button.setAttribute("aria-label",title);button.addEventListener("click",onClick);return button;
+  }
+  function approveUserOptimistic(name,row){
+    if(row)row.classList.add("is-loading");
+    adminAction("approveUser",{name}).finally(()=>row?.classList.remove("is-loading"));
+  }
+  function recentPrevious(items){
+    const now=Date.now()+serverOffsetMs,cutoff=now-60*60*1000;
+    return (items||[]).filter(item=>{const t=new Date(item.playedAt||0).getTime();return Number.isFinite(t)&&t>=cutoff&&t<=now;}).slice(-2);
+  }
+  function renderCombinedQueue(state){
+    const list=$("queue-list");if(!list)return;list.replaceChildren();
+    const entries=[...recentPrevious(state.previous).map(item=>({item,kind:"previous"})),...(state.current?[{item:state.current,kind:"current"}]:[]),...(state.queue||[]).map((item,index)=>({item,kind:"upcoming",index}))];
+    if(!entries.length){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пуста.";list.append(li);return;}
+    entries.forEach(({item,kind,index})=>{
+      const li=document.createElement("li");li.className=`queue-item admin-queue-item public-queue-item ${kind}`;li.dataset.songId=item.id||"";
+      const num=document.createElement("span");num.className="queue-number";num.textContent=kind==="upcoming"?String(index+1).padStart(2,"0"):kind==="current"?"▶":"◷";
+      const body=document.createElement("div");body.className="queue-item-body";
+      const song=document.createElement("div");song.className="queue-song";song.textContent=label(item);
+      const requester=document.createElement("div");requester.className="queue-requester";
+      const stamp=item.requestedAt?new Date(Number(item.requestedAt)).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"";
+      requester.textContent=`${item.requester||"—"}${stamp?" · Заказ: "+stamp:""}`;
+      body.append(song,requester);
+      if(kind==="current"){const marker=document.createElement("span");marker.className="current-queue-marker";marker.textContent="СЕЙЧАС ИГРАЕТ";body.prepend(marker);}
+      li.append(num,body);
+      if(kind==="upcoming"){
+        const actions=document.createElement("div");actions.className="queue-actions";
+        const play=makeButton("▶","Воспроизвести сейчас",()=>playLocked(item,"queue",play));actions.append(play);
+        const up=makeButton("↑","Переместить выше",()=>moveOptimistic(item.id,"up"));up.disabled=index===0;
+        const down=makeButton("↓","Переместить ниже",()=>moveOptimistic(item.id,"down"));down.disabled=index===(state.queue||[]).length-1;
+        actions.append(up,down);
+        const drag=makeButton("⠿","Включить перетаскивание",()=>{li.draggable=!li.draggable;li.classList.toggle("drag-armed",li.draggable);drag.title=li.draggable?"Перетащите песню на новое место":"Включить перетаскивание";},"drag-handle");actions.append(drag);
+        actions.append(makeButton("×","Удалить из очереди",()=>queueAction("remove",item.id),"remove-button"));li.append(actions);
+        li.addEventListener("dragstart",e=>{if(!li.draggable){e.preventDefault();return;}queueDragActive=true;activeDraggedElement=li;list.classList.add("is-reordering");e.dataTransfer.setData("text/plain",item.id);e.dataTransfer.effectAllowed="move";});
+        li.addEventListener("dragover",e=>{if(!queueDragActive||!e.dataTransfer.types.includes("text/plain"))return;e.preventDefault();const moving=activeDraggedElement;if(!moving||moving===li)return;const rect=li.getBoundingClientRect();list.insertBefore(moving,e.clientY>rect.top+rect.height/2?li.nextSibling:li);});
+        li.addEventListener("drop",e=>{e.preventDefault();if(!queueDragActive)return;const ids=Array.from(list.querySelectorAll("li.upcoming[data-song-id]")).map(x=>x.dataset.songId);queueDragActive=false;activeDraggedElement=null;list.classList.remove("is-reordering");list.querySelectorAll(".drag-armed").forEach(x=>{x.draggable=false;x.classList.remove("drag-armed");});optimisticOps++;showLoading("Сохраняем новый порядок…");api("reorder",{ids:JSON.stringify(ids)}).then(()=>refresh(true)).catch(err=>{message("queue-message",err.message,true);refresh(true);}).finally(()=>{optimisticOps=Math.max(0,optimisticOps-1);hideLoading();refresh(true);});});
+        li.addEventListener("dragend",()=>{queueDragActive=false;activeDraggedElement=null;list.classList.remove("is-reordering");li.draggable=false;li.classList.remove("drag-armed");});
+      }
+      list.append(li);
+    });
+  }
+  function historyStatus(status){return ({Completed:"Исполнена",Skipped:"Пропущена",Interrupted:"Прервана",Removed:"Удалена",Replayed:"Повтор"})[status]||status;}
+  async function playLocked(item,mode,button){
+    const key=String(item.historyId||item.id);if(playingLocks.has(key))return;
+    playingLocks.add(key);if(button){button.disabled=true;button.dataset.originalText=button.textContent;button.textContent="…";}
+    showLoading("Добавляем песню в очередь…");
+    try{await api("play",{songId:item.id,...(mode==="history"?{source:"history"}:{})});await refresh(true);message("queue-message",mode==="history"?"Песня добавлена следующей после текущей.":"Песня запущена.");}
+    catch(err){message("queue-message",err.message,true);}
+    finally{playingLocks.delete(key);if(button&&button.isConnected){button.disabled=false;button.textContent=button.dataset.originalText||"▶";}hideLoading();}
+  }
+  function renderSongList(listId,items,mode){
+    const list=$(listId);if(!list)return;list.replaceChildren();
+    if(!items||!items.length){const li=document.createElement("li");li.className="empty";li.textContent=mode==="history"?"История пока пуста.":mode==="recent"?"История воспроизведения пока пуста.":"Очередь пуста.";list.appendChild(li);return;}
+    items.forEach((item,index)=>{
+      const li=document.createElement("li");li.className="queue-item admin-queue-item";
+      const num=document.createElement("span");num.className="queue-number";num.textContent=mode==="history"?"◷":String(index+1).padStart(2,"0");
+      const body=document.createElement("div");body.className="queue-item-body";
+      const song=document.createElement("div");song.className="queue-song";song.textContent=label(item);
+      const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=`${item.requester||"—"}${item.result?" · "+historyStatus(item.result):""}`;
+      body.append(song,requester);const actions=document.createElement("div");actions.className="queue-actions";
+      if(mode==="history"){
+        const play=makeButton("▶","Добавить следующей после текущей",()=>playLocked(item,"history",play));actions.append(play);
+        actions.append(makeButton("◌","Скрыть запись",()=>adminAction("hideHistory",{historyId:item.historyId||item.id})));
+        actions.append(makeButton("×","Удалить запись",()=>{if(confirm("Удалить эту запись из истории навсегда?"))adminAction("deleteHistory",{historyId:item.historyId||item.id});},"remove-button"));
+      }
+      li.append(num,body,actions);list.appendChild(li);
+    });
+  }
+
   function renderGlobalNotices(){
     const host=$("global-notifications");if(!host)return;host.replaceChildren();
     [...globalNotices.values()].sort((x,y)=>y.created-x.created).slice(0,4).forEach(n=>{

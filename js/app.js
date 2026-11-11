@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.9.4.4 — guest client.
+  // KaraLoki v1.9.4.6 — guest client.
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
