@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.9.4.3 — guest client.
+  // KaraLoki v1.9.4.4 — guest client.
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
@@ -134,6 +134,7 @@
   }
   async function login(name){
     const result=await api("guestLogin",{name,sessionToken,clientInfo:clientInfo()});
+    msg("guest-login-message","");
     if(result.status==="sessionOccupied"){stopHeartbeat();sessionToken="";localStorage.removeItem(SESSION_KEY);guestName=result.name||name;localStorage.setItem(NAME_KEY,guestName);showOnly("guest-session-occupied-panel");$("session-occupied-message").textContent=`Имя «${guestName}» уже используется на другом устройстве. Повторный вход будет доступен после завершения сессии или выхода через администратора.`;return;}
     guestName=result.name||name;localStorage.setItem(NAME_KEY,guestName);
     if(result.sessionToken){sessionToken=result.sessionToken;localStorage.setItem(SESSION_KEY,sessionToken);}

@@ -556,7 +556,7 @@ body{
 
 /* v1.9.4 — shared cascading global notifications */
 .global-notifications{
-  position:fixed;z-index:99999;top:75%;left:50%;transform:translate(-50%,-50%);
+  position:fixed;z-index:99999;top:25%;left:50%;transform:translate(-50%,-50%);
   width:min(520px,calc(100vw - 24px));display:flex;flex-direction:column;gap:8px;
   pointer-events:none;
 }
@@ -582,3 +582,9 @@ body{
 .footer-nav .footer-spacer{flex:1}
 .footer-nav a[aria-current="page"]{color:var(--accent,#18c7aa);pointer-events:none}
 .queue-only-page>.panel{min-height:180px}
+
+/* v1.9.4.4: three-way navigation, in public / queue / admin order */
+.footer-nav{display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;gap:12px}
+.footer-nav a:nth-child(2),.footer-nav span:nth-child(2){text-align:center}
+.footer-nav a:last-child,.footer-nav span:last-child{text-align:right}
+@media(max-width:420px){.footer-nav{gap:6px;font-size:.78rem}}

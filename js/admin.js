@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.9.4.3 — admin client.
+  // KaraLoki v1.9.4.4 — admin client.
   "use strict";
   const cfg=window.KARALOKI_CONFIG||{},$=id=>document.getElementById(id),ADMIN_TOKEN_KEY="karaloki_admin_token",ADMIN_NAME_KEY="karaloki_admin_username";
   let adminToken=sessionStorage.getItem(ADMIN_TOKEN_KEY)||"",adminUsername=sessionStorage.getItem(ADMIN_NAME_KEY)||"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,pendingAdminSong=null,adminSongBusy=false,refreshBusy=false,refreshPromise=null,nextRefreshAt=0,retryDelay=2000,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false,queueDragActive=false;
@@ -129,8 +129,8 @@
     if(refreshPromise)return refreshPromise;
     if(!force&&Date.now()<nextRefreshAt)return;
     refreshBusy=true;
-    refreshPromise=(async()=>{try{const result=await api("state",{});if(!result||!result.state)throw new Error("Сервер вернул неполные данные.");retryDelay=2000;nextRefreshAt=0;if(!queueDragActive&&optimisticOps===0&&!playbackActionBusy)render(result.state);}
-      catch(e){nextRefreshAt=Date.now()+retryDelay;retryDelay=Math.min(30000,retryDelay*2);if(!lastState){message("control-message",e.message,true);const t=$("startup-loading")?.querySelector(".loading-text");if(t)t.textContent="Не удалось загрузить данные. Повторяем подключение…";}}
+    refreshPromise=(async()=>{try{const result=await api("state",{});if(!result||!result.state||!Array.isArray(result.state.queue)||!result.state.settings)throw new Error("Сервер вернул неполные данные панели. Проверьте версию Apps Script и подключение к таблице.");retryDelay=2000;nextRefreshAt=0;if(!queueDragActive&&optimisticOps===0&&!playbackActionBusy){render(result.state);$("startup-loading")?.classList.add("is-hidden");}}
+      catch(e){nextRefreshAt=Date.now()+retryDelay;retryDelay=Math.min(30000,retryDelay*2);if(/сессия администратора завершена/i.test(e.message||"")){adminToken="";adminUsername="";sessionStorage.removeItem(ADMIN_TOKEN_KEY);sessionStorage.removeItem(ADMIN_NAME_KEY);lastState=null;unlocked(false);message("login-message","Сессия администратора завершена. Войдите снова.",true);}else{message("control-message",e.message,true);const t=$("startup-loading")?.querySelector(".loading-text");if(t)t.textContent="Не удалось загрузить данные. Повторяем подключение…";}}
       finally{refreshBusy=false;refreshPromise=null;}})();
     return refreshPromise;
   }
