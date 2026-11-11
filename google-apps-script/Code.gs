@@ -1,5 +1,5 @@
 /**
- * KaraLoki v1.9.0 — Google Apps Script backend.
+ * KaraLoki v1.9.5 — Google Apps Script backend.
  * Guest identity is the approved display name (case-insensitive matching).
  * Device IDs and room codes are no longer used. Google Sheets remains the database.
  * Admin identity and PIN are stored in the private Admin sheet. Admin sessions are server-validated.
@@ -230,7 +230,7 @@ function addSong_(p) {
     sh.appendRow([id,song,artist,requester,"Waiting",new Date(),pos]);
     if (!admin) updateUser_(key,{cooldownUntil:now + getSettings_().cooldownSeconds*1000,updatedAt:new Date()});
     ensureCurrent_();
-    return {ok:true,message:"Песня добавлена в очередь.",cooldownSeconds:admin?0:getSettings_().cooldownSeconds};
+    return {ok:true,message:"Песня добавлена в очередь.",songId:id,createdAt:now,cooldownSeconds:admin?0:getSettings_().cooldownSeconds};
   });
 }
 

@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.9.4.6 — guest client.
+  // KaraLoki v1.9.5 — guest client.
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
@@ -47,6 +47,32 @@
   function time(s){s=Math.max(0,Math.floor(Number(s)||0));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
   function songLabel(item){return item.artist?`${item.song} — ${item.artist}`:item.song;}
   function normalizeName(value){return String(value||"").trim().replace(/\s+/g," ").toLocaleLowerCase();}
+  function delay(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+  function stateHasSong(state,songId,fallback){
+    if(!state)return false;
+    const records=[state.current,...(state.queue||[]),...(state.previous||[]),...(state.history||[])].filter(Boolean);
+    if(songId&&records.some(item=>String(item.id||"")===String(songId)))return true;
+    if(!fallback)return false;
+    const since=Number(fallback.startedAt||0)-10000;
+    return records.some(item=>{
+      const created=Number(item.requestedAt||0);
+      return created>=since&&normalizeName(item.song)===normalizeName(fallback.song)&&
+        normalizeName(item.artist)===normalizeName(fallback.artist)&&
+        normalizeName(item.requester)===normalizeName(fallback.requester);
+    });
+  }
+  async function waitForSongConfirmation(songId,fallback){
+    let wait=700;
+    while(true){
+      await refresh(true);
+      if(stateHasSong(lastState,songId,fallback))return lastState;
+      await delay(wait);
+      wait=Math.min(2500,Math.round(wait*1.25));
+    }
+  }
+  function isUncertainRequestError(error){
+    return /слишком долго|не удалось связаться|network|timeout|тайм-аут/i.test(String(error?.message||""));
+  }
   function recentPrevious(items){const now=Date.now()+serverOffsetMs,cutoff=now-60*60*1000;return (items||[]).filter(item=>{const t=new Date(item.playedAt||0).getTime();return Number.isFinite(t)&&t>=cutoff&&t<=now;}).slice(-2);}
   function showOnly(id){["guest-login-panel","guest-pending-panel","guest-banned-panel","guest-session-occupied-panel","public-content"].forEach(x=>$(x).classList.toggle("hidden",x!==id));$("guest-logout").classList.toggle("hidden",id!=="public-content");}
   function renderQueue(state){
@@ -58,7 +84,8 @@
       ...(current?[{item:current,kind:"current",number:""}]:[]),
       ...upcoming.map((item,i)=>({item,kind:"upcoming",number:String(i+1).padStart(2,"0")}))
     ];
-    if(!entries.length&&!pendingSongRequest){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пока пуста. Закажите первую песню!";list.appendChild(li);return;}
+    const showPendingTemplate=!!pendingSongRequest&&!stateHasSong(state,pendingSongRequest.id,{song:pendingSongRequest.song,artist:pendingSongRequest.artist,requester:pendingSongRequest.requester,startedAt:pendingSongRequest.startedAt});
+    if(!entries.length&&!showPendingTemplate){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пока пуста. Закажите первую песню!";list.appendChild(li);return;}
     entries.forEach(({item,kind,number})=>{
       const li=document.createElement("li");li.className=`queue-item public-queue-item ${kind}`;
       if(kind==="upcoming"&&normalizeName(item.requester)===normalizeName(guestName))li.classList.add("my-request");
@@ -71,13 +98,13 @@
       else body.append(song,requester);
       li.append(num,body);list.appendChild(li);
     });
-    if(pendingSongRequest){
+    if(showPendingTemplate){
       const li=document.createElement("li");li.className="queue-item public-queue-item upcoming pending-song";
       const icon=document.createElement("span");icon.className="queue-number";icon.textContent="◷";
       const body=document.createElement("div");body.className="queue-item-body";
       const song=document.createElement("div");song.className="queue-song";song.textContent=pendingSongRequest.artist?`${pendingSongRequest.song} — ${pendingSongRequest.artist}`:pendingSongRequest.song;
-      const requester=document.createElement("div");requester.className="queue-requester";requester.textContent="Ваш заказ · Отправляем...";
-      const status=document.createElement("span");status.className="pending-song-status";status.textContent="Ожидание подтверждения";
+      const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=pendingSongRequest.acknowledged?"Ваш заказ · Сохранено, обновляем очередь":"Ваш заказ · Отправляем...";
+      const status=document.createElement("span");status.className="pending-song-status";status.textContent=pendingSongRequest.acknowledged?"Сохранено · синхронизируем очередь":"Ожидание подтверждения";
       body.append(song,requester,status);li.append(icon,body);list.appendChild(li);
     }
   }
@@ -237,20 +264,34 @@
     if(busy||pendingSongRequest)return;
     const song=$("song-input").value.trim(),artist=$("artist-input").value.trim();
     if(!song)return msg("request-message","Введите название песни.",true);
-    busy=true;pendingSongRequest={song,artist,id:"pending-"+Date.now()};
+    const startedAt=Date.now();
+    busy=true;pendingSongRequest={song,artist,id:"pending-"+startedAt,startedAt,requester:guestName,acknowledged:false};
     const fields=$("request-fields"),button=$("request-button");
     if(fields)fields.querySelectorAll("input").forEach(input=>input.disabled=true);
     button.disabled=true;button.classList.add("is-loading");button.textContent="Добавить в очередь";
-    msg("request-message","Добавляем песню в очередь... Пожалуйста, подождите");
+    msg("request-message","Добавляем песню в очередь...");
     if(lastState)renderQueue(lastState);
     try{
-      const result=await api("add",{song,artist,requester:guestName,sessionToken});
-      pendingSongRequest=null;$("song-input").value="";$("artist-input").value="";
-      msg("request-message",result.message||"Песня добавлена в очередь.");
-      await refresh(true);setTimeout(()=>{if(!busy)msg("request-message","");},3500);
+      let result;
+      try{result=await api("add",{song,artist,requester:guestName,sessionToken});}
+      catch(error){
+        if(!isUncertainRequestError(error))throw error;
+        msg("request-message","Проверяем, успел ли сервер сохранить заказ...");
+      }
+      if(result?.songId){pendingSongRequest.id=String(result.songId);pendingSongRequest.acknowledged=true;}
+      else pendingSongRequest.acknowledged=true;
+      if(lastState)renderQueue(lastState);
+      await waitForSongConfirmation(result?.songId||"",{song,artist,requester:guestName,startedAt});
+      pendingSongRequest=null;
+      if(lastState)renderQueue(lastState);
+      $("song-input").value="";$("artist-input").value="";
+      msg("request-message","Песня подтверждена в очереди.");
+      setTimeout(()=>msg("request-message",""),3500);
     }catch(err){
-      pendingSongRequest=null;msg("request-message",err.message||"Не удалось добавить песню.",true);
-      if(lastState)renderQueue(lastState);await refresh(true);
+      pendingSongRequest=null;
+      msg("request-message",err.message||"Не удалось добавить песню.",true);
+      if(lastState)renderQueue(lastState);
+      await refresh(true);
     }finally{
       busy=false;if(fields)fields.querySelectorAll("input").forEach(input=>input.disabled=false);
       button.classList.remove("is-loading");updateRestrictions();if(lastState)renderQueue(lastState);

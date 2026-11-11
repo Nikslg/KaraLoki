@@ -1,11 +1,13 @@
 (() => {
-  // KaraLoki v1.9.4.7 — admin client.
+  // KaraLoki v1.9.5 — admin client.
   "use strict";
   const cfg=window.KARALOKI_CONFIG||{},$=id=>document.getElementById(id),ADMIN_TOKEN_KEY="karaloki_admin_token",ADMIN_NAME_KEY="karaloki_admin_username";
   let adminToken=sessionStorage.getItem(ADMIN_TOKEN_KEY)||"",adminUsername=sessionStorage.getItem(ADMIN_NAME_KEY)||"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,pendingAdminSong=null,adminSongBusy=false,refreshBusy=false,refreshPromise=null,nextRefreshAt=0,retryDelay=2000,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false,queueDragActive=false;
   let activeDraggedElement=null;const playingLocks=new Set();
   const playbackActionQueue=[]; let playbackQueueRunning=false,playbackConfirmedState=null,lastConfirmedPlaybackState=null;
   const logoutActionQueue=[];let logoutQueueRunning=false;const userActionLocks=new Set();const userInlineNotices=new Map();
+  const userActionQueue=[];let userActionQueueRunning=false,historyPlaybackBusy=false;
+  const historyReplayStates=new Map();
   const rowLocks=new Set(); let pendingOps=0,optimisticOps=0;
   const globalNotices=new Map();let noticeSequence=0;
   // JSONP callbacks remain callable after a client timeout: Apps Script may still
@@ -27,6 +29,32 @@
   function time(s){s=Math.max(0,Math.floor(Number(s)||0));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
   function label(item){return item.artist?`${item.song} — ${item.artist}`:item.song;}
   function normalizeName(value){return String(value||"").trim().replace(/\s+/g," ").toLocaleLowerCase();}
+  function delay(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+  function stateHasSong(state,songId,fallback){
+    if(!state)return false;
+    const records=[state.current,...(state.queue||[]),...(state.previous||[]),...(state.history||[])].filter(Boolean);
+    if(songId&&records.some(item=>String(item.id||"")===String(songId)))return true;
+    if(!fallback)return false;
+    const since=Number(fallback.startedAt||0)-10000;
+    return records.some(item=>{
+      const created=Number(item.requestedAt||0);
+      return created>=since&&normalizeName(item.song)===normalizeName(fallback.song)&&
+        normalizeName(item.artist)===normalizeName(fallback.artist)&&
+        normalizeName(item.requester)===normalizeName(fallback.requester);
+    });
+  }
+  async function waitForSongConfirmation(songId,fallback){
+    let wait=700;
+    while(true){
+      await refresh(true);
+      if(stateHasSong(lastState,songId,fallback))return lastState;
+      await delay(wait);
+      wait=Math.min(2500,Math.round(wait*1.25));
+    }
+  }
+  function isUncertainRequestError(error){
+    return /слишком долго|не удалось связаться|network|timeout|тайм-аут/i.test(String(error?.message||""));
+  }
   function unlocked(value){$("login-panel")?.classList.toggle("hidden",!!value);$("admin-content")?.classList.toggle("hidden",!value);}
   function makeButton(text,title,onClick,className=""){
     const button=document.createElement("button");button.type="button";button.className=`icon-button ${className}`.trim();button.textContent=text;button.title=title;button.setAttribute("aria-label",title);button.addEventListener("click",onClick);return button;
@@ -42,7 +70,8 @@
   function renderCombinedQueue(state){
     const list=$("queue-list");if(!list)return;list.replaceChildren();
     const entries=[...recentPrevious(state.previous).map(item=>({item,kind:"previous"})),...(state.current?[{item:state.current,kind:"current"}]:[]),...(state.queue||[]).map((item,index)=>({item,kind:"upcoming",index}))];
-    if(!entries.length&&!pendingAdminSong){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пуста.";list.append(li);return;}
+    const showPendingTemplate=!!pendingAdminSong&&!stateHasSong(state,pendingAdminSong.id,{song:pendingAdminSong.song,artist:pendingAdminSong.artist,requester:pendingAdminSong.requester,startedAt:pendingAdminSong.startedAt});
+    if(!entries.length&&!showPendingTemplate){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пуста.";list.append(li);return;}
     entries.forEach(({item,kind,index})=>{
       const li=document.createElement("li");li.className=`queue-item admin-queue-item public-queue-item ${kind}`;li.dataset.songId=item.id||"";
       const num=document.createElement("span");num.className="queue-number";num.textContent=kind==="upcoming"?String(index+1).padStart(2,"0"):kind==="current"?"▶":"◷";
@@ -69,17 +98,29 @@
       }
       list.append(li);
     });
-    if(pendingAdminSong){
+    if(showPendingTemplate){
       const li=document.createElement("li");li.className="queue-item public-queue-item upcoming pending-song";
       const icon=document.createElement("span");icon.className="queue-number";icon.textContent="◷";
       const body=document.createElement("div");body.className="queue-item-body";
       const song=document.createElement("div");song.className="queue-song";song.textContent=pendingAdminSong.artist?`${pendingAdminSong.song} — ${pendingAdminSong.artist}`:pendingAdminSong.song;
-      const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=`${adminUsername||"Ведущий"} · Отправляется...`;
-      const status=document.createElement("span");status.className="pending-song-status";status.textContent="Ожидание подтверждения";
+      const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=pendingAdminSong.acknowledged?`${adminUsername||"Ведущий"} · Сохранено, обновляем очередь`:`${adminUsername||"Ведущий"} · Отправляется...`;
+      const status=document.createElement("span");status.className="pending-song-status";status.textContent=pendingAdminSong.acknowledged?"Сохранено · синхронизируем очередь":"Ожидание подтверждения";
       body.append(song,requester,status);li.append(icon,body);list.append(li);
     }
   }
   function historyStatus(status){return ({Completed:"Исполнена",Skipped:"Пропущена",Interrupted:"Прервана",Removed:"Удалена",Replayed:"Повтор"})[status]||status;}
+  function historyStatusClass(status){
+    if(["Completed","Replayed"].includes(String(status)))return "is-played";
+    if(String(status)==="Skipped")return "is-skipped";
+    if(String(status)==="Interrupted")return "is-interrupted";
+    if(["Removed","Cleared"].includes(String(status)))return "is-removed";
+    return "is-other";
+  }
+  function historyTime(value){
+    if(value===null||value===undefined||value==="")return "Время неизвестно";
+    const date=new Date(typeof value==="number"?value:(/^\d+$/.test(String(value))?Number(value):value));
+    return Number.isNaN(date.getTime())?"Время неизвестно":date.toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+  }
   function setHistoryIcon(button,type){
     const paths={
       play:'<circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z" fill="currentColor" stroke="none"/>',
@@ -87,30 +128,76 @@
       delete:'<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/>'
     };
     button.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[type]}</svg>`;
-    button.classList.add("history-icon-button");
+    button.classList.add("history-icon-button",`history-${type}-action`);
   }
   async function playLocked(item,mode,button){
-    const key=String(item.historyId||item.id);if(playingLocks.has(key))return;
-    playingLocks.add(key);if(button){button.disabled=true;button.dataset.originalText=button.textContent;button.textContent="…";}
+    const key=String(item.historyId||item.id);
+    if(playingLocks.has(key)||(mode==="history"&&historyPlaybackBusy))return;
+    playingLocks.add(key);if(mode==="history")historyPlaybackBusy=true;
+    if(mode==="history"){
+      historyReplayStates.set(key,"sending");
+      document.querySelectorAll("#history-list button").forEach(b=>{b.disabled=true;b.classList.add("is-action-pending");});
+      const row=[...document.querySelectorAll("#history-list [data-history-entry-id]")].find(el=>el.dataset.historyEntryId===key);
+      row?.classList.add("history-replay-sending");
+    }
+    if(button){button.disabled=true;button.dataset.originalText=button.textContent;button.textContent="…";}
     showLoading("Добавляем песню в очередь…");
-    try{await api("play",{songId:item.id,...(mode==="history"?{source:"history"}:{})});await refresh(true);message("queue-message",mode==="history"?"Песня добавлена следующей после текущей.":"Песня запущена.");}
-    catch(err){message("queue-message",err.message,true);}
-    finally{playingLocks.delete(key);if(button&&button.isConnected){button.disabled=false;button.textContent=button.dataset.originalText||"▶";}hideLoading();}
+    try{
+      await api("play",{songId:item.id,...(mode==="history"?{source:"history"}:{})});
+      hideLoading();
+      message("queue-message",mode==="history"?"Песня добавлена следующей в очередь.":"Песня запущена.");
+      if(mode==="history")historyReplayStates.set(key,"success");
+      await refresh(true);
+      if(mode==="history"){
+        const row=[...document.querySelectorAll("#history-list [data-history-entry-id]")].find(el=>el.dataset.historyEntryId===key);
+        row?.classList.remove("history-replay-sending");row?.classList.add("history-replay-success");
+        setTimeout(()=>{
+          historyReplayStates.delete(key);
+          const current=[...document.querySelectorAll("#history-list [data-history-entry-id]")].find(el=>el.dataset.historyEntryId===key);
+          current?.classList.remove("history-replay-sending","history-replay-success");
+        },3200);
+      }
+    }catch(err){
+      historyReplayStates.delete(key);
+      hideLoading();message("queue-message",err.message,true);
+      const row=[...document.querySelectorAll("#history-list [data-history-entry-id]")].find(el=>el.dataset.historyEntryId===key);
+      row?.classList.remove("history-replay-sending","history-replay-success");
+    }finally{
+      playingLocks.delete(key);if(mode==="history")historyPlaybackBusy=false;
+      if(button&&button.isConnected){button.disabled=false;button.textContent=button.dataset.originalText||"▶";}
+      document.querySelectorAll("#history-list button").forEach(b=>{b.disabled=false;b.classList.remove("is-action-pending");});
+      hideLoading();
+    }
   }
+
   function renderSongList(listId,items,mode){
     const list=$(listId);if(!list)return;list.replaceChildren();
     if(!items||!items.length){const li=document.createElement("li");li.className="empty";li.textContent=mode==="history"?"История пока пуста.":mode==="recent"?"История воспроизведения пока пуста.":"Очередь пуста.";list.appendChild(li);return;}
     items.forEach((item,index)=>{
       const li=document.createElement("li");li.className="queue-item admin-queue-item";
+      const historyKey=String(item.historyId||item.id||"");
+      if(mode==="history"){
+        li.dataset.historyEntryId=historyKey;
+        const replayState=historyReplayStates.get(historyKey);
+        if(replayState==="sending")li.classList.add("history-replay-sending");
+        if(replayState==="success")li.classList.add("history-replay-success");
+      }
       const num=document.createElement("span");num.className="queue-number";num.textContent=mode==="history"?"◷":String(index+1).padStart(2,"0");
       const body=document.createElement("div");body.className="queue-item-body";
       const song=document.createElement("div");song.className="queue-song";song.textContent=label(item);
-      const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=`${item.requester||"—"}${item.result?" · "+historyStatus(item.result):""}`;
-      body.append(song,requester);const actions=document.createElement("div");actions.className="queue-actions";
+      const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=item.requester||"—";
+      body.append(song,requester);
+      if(mode==="history"){
+        const meta=document.createElement("div");meta.className="history-entry-meta";
+        const status=document.createElement("span");status.className=`history-status-pill ${historyStatusClass(item.result)}`;status.textContent=historyStatus(item.result||"");
+        const played=document.createElement("time");played.className="history-played-at";played.textContent=historyTime(item.playedAt);meta.append(status,played);body.append(meta);
+      }
+      const actions=document.createElement("div");actions.className="queue-actions";
       if(mode==="history"){
         const play=makeButton("","Добавить следующей после текущей",()=>playLocked(item,"history",play));setHistoryIcon(play,"play");actions.append(play);
         const hide=makeButton("","Скрыть запись",()=>adminAction("hideHistory",{historyId:item.historyId||item.id}));setHistoryIcon(hide,"hide");actions.append(hide);
         const remove=makeButton("","Удалить запись",()=>{if(confirm("Удалить эту запись из истории навсегда?"))adminAction("deleteHistory",{historyId:item.historyId||item.id});},"remove-button");setHistoryIcon(remove,"delete");actions.append(remove);
+        if(historyPlaybackBusy)actions.querySelectorAll("button").forEach(b=>{b.disabled=true;b.classList.add("is-action-pending");});
       }
       li.append(num,body,actions);list.appendChild(li);
     });
@@ -280,25 +367,41 @@
     }
     logoutQueueRunning=false;
   }
+  async function drainUserActionQueue(){
+    if(userActionQueueRunning)return;
+    userActionQueueRunning=true;
+    try{
+      while(userActionQueue.length){
+        const item=userActionQueue.shift();
+        try{
+          await api(item.action,{...item.params});
+          inlineUserMessage(item.feedback,successText[item.action]||"Изменения сохранены.");
+          await refresh(true);
+          setTimeout(()=>{userInlineNotices.delete(item.name);const current=document.getElementById(`user-feedback-${encodeURIComponent(item.name)}`);if(current)current.classList.add("hidden");},5000);
+        }catch(e){
+          inlineUserMessage(item.feedback,e.message||"Не удалось выполнить действие.",true);
+        }finally{
+          userActionLocks.delete(item.key);
+          if(item.row?.isConnected)item.row.classList.remove("is-pending-action");
+          item.resolve();
+        }
+      }
+    }finally{userActionQueueRunning=false;}
+  }
   function actionMessageId(action){if(["pause","resume","skip"].includes(action))return "control-message";if(["approveUser","denyUser","liftCooldown","banUser","returnToPending",].includes(action))return "users-message";return "queue-message";}
   async function adminAction(action,params={}){
     const userScoped=["denyUser","liftCooldown","banUser","returnToPending","forceLogoutSession"].includes(action)&&params.name;
     if(userScoped){
       const name=String(params.name),key=normalizeName(name);
-      if(userActionLocks.has(key))return;
+      if(userActionLocks.has(key))return Promise.resolve();
       userActionLocks.add(key);
-      const row=getUserRow(name);
-      const feedback=getUserFeedback(name,row);
+      const row=getUserRow(name),feedback=getUserFeedback(name,row);
+      if(row)row.classList.add("is-pending-action");
       inlineUserMessage(feedback,pendingText[action]||"Выполняем действие…");
-      try{
-        await api(action,{...params});
-        const success=successText[action]||"Изменения сохранены.";
-        inlineUserMessage(feedback,success);
-        await refresh(true);
-        setTimeout(()=>{userInlineNotices.delete(name);const current=document.getElementById(`user-feedback-${encodeURIComponent(name)}`);if(current)current.classList.add("hidden");},5000);
-      }catch(e){inlineUserMessage(feedback,e.message||"Не удалось выполнить действие.",true);}
-      finally{userActionLocks.delete(key);}
-      return;
+      return new Promise(resolve=>{
+        userActionQueue.push({action,params,name,key,row,feedback,resolve});
+        drainUserActionQueue();
+      });
     }
     if(busy)return;busy=true;const target=actionMessageId(action);message(target,pendingText[action]||"Выполняем действие...");
     try{
@@ -379,21 +482,34 @@
   $("admin-request-form").addEventListener("submit",async e=>{
     e.preventDefault();if(adminSongBusy||pendingAdminSong)return;
     const song=$("admin-song-input").value.trim(),artist=$("admin-artist-input").value.trim();if(!song)return;
-    adminSongBusy=true;pendingAdminSong={song,artist,id:"admin-pending-"+Date.now()};
+    const startedAt=Date.now();
+    adminSongBusy=true;pendingAdminSong={song,artist,id:"admin-pending-"+startedAt,startedAt,requester:adminUsername,acknowledged:false};
     const fields=$("admin-request-fields"),button=$("admin-request-button");
     if(fields)fields.querySelectorAll("input").forEach(input=>input.disabled=true);
     button.disabled=true;button.classList.add("is-loading");button.textContent="Добавить в очередь";
-    message("admin-request-message","Добавляем песню в очередь... Пожалуйста, подождите");
+    message("admin-request-message","Добавляем песню в очередь...");
     if(lastState)renderCombinedQueue(lastState);
     try{
-      const result=await api("add",{song,artist,requester:adminUsername,adminToken});
-      pendingAdminSong=null;$("admin-song-input").value="";$("admin-artist-input").value="";
-      message("admin-request-message",result.message||"Песня добавлена в очередь.");
-      await refresh(true);
-      setTimeout(()=>{if(!adminSongBusy)message("admin-request-message","");},3500);
+      let result;
+      try{result=await api("add",{song,artist,requester:adminUsername,adminToken});}
+      catch(error){
+        if(!isUncertainRequestError(error))throw error;
+        message("admin-request-message","Проверяем, успел ли сервер сохранить заказ...");
+      }
+      if(result?.songId){pendingAdminSong.id=String(result.songId);pendingAdminSong.acknowledged=true;}
+      else pendingAdminSong.acknowledged=true;
+      if(lastState)renderCombinedQueue(lastState);
+      await waitForSongConfirmation(result?.songId||"",{song,artist,requester:adminUsername,startedAt});
+      pendingAdminSong=null;
+      if(lastState)renderCombinedQueue(lastState);
+      $("admin-song-input").value="";$("admin-artist-input").value="";
+      message("admin-request-message","Песня подтверждена в очереди.");
+      setTimeout(()=>message("admin-request-message",""),3500);
     }catch(err){
-      pendingAdminSong=null;message("admin-request-message",err.message||"Не удалось добавить песню.",true);
-      if(lastState)renderCombinedQueue(lastState);await refresh(true);
+      pendingAdminSong=null;
+      message("admin-request-message",err.message||"Не удалось добавить песню.",true);
+      if(lastState)renderCombinedQueue(lastState);
+      await refresh(true);
     }finally{
       adminSongBusy=false;if(fields)fields.querySelectorAll("input").forEach(input=>input.disabled=false);
       button.disabled=false;button.classList.remove("is-loading");button.textContent="Добавить в очередь";

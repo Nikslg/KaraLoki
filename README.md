@@ -112,3 +112,44 @@ Apply the frontend files to GitHub Pages and replace `Code.gs` in the existing A
 - Re-aligned confirmed-user cooldown and action controls.
 - Removed the unwanted internal scrollbars from pending and confirmed user lists.
 - No Apps Script backend changes; playback logic is unchanged.
+
+
+## v1.9.4.9 Admin action hotfix
+- User-management mutations now run through a single FIFO queue, preventing overlapping changes and making cooldown/ban removal reliable when multiple user actions are pending.
+- History playback is serialized: only one historical song can be queued at a time; all history action buttons are temporarily disabled during the operation.
+- The global "Добавляем песню в очередь…" notice is cleared as soon as the play request completes, before the subsequent state refresh.
+- Confirmed-user cooldown display is positioned at approximately 40% of the card width; cooldown action icon buttons are centered.
+- History action buttons now have distinct play/hide/delete colors.
+- Playback engine and Apps Script backend are unchanged.
+
+
+# KaraLoki v1.9.5
+
+## Included changes
+
+### Retained from the accumulated v1.9.4.9 work
+- User-management actions are serialized through a shared FIFO queue.
+- History replay requests are serialized and history action buttons are disabled while replay is in progress.
+- Loading notification for history replay clears when the server action completes, without waiting for state refresh.
+- Confirmed-user cooldown is positioned around 40% across the card; action icons are centered.
+- History play/hide/delete buttons retain distinct colors.
+
+### History page
+- Clear History button moved to the right side of the heading, immediately before the count.
+- Each history record shows its played/skipped timestamp.
+- Played/replayed statuses use green bubbles; skipped uses yellow; other results have distinct neutral/warning treatment.
+- Replaying a history item highlights the original row purple while sending, then green for approximately 3.2 seconds after the server accepts it.
+- The original history row remains in its original position. When the replay is later completed or skipped, the backend creates a separate new history event.
+- Bottom navigation links are styled as pill buttons on all three pages.
+
+### Song request confirmation
+- The temporary song card exists only on the page where the request was submitted.
+- It remains visible after the add endpoint acknowledges the request.
+- The Apps Script add response now returns the committed Queue row ID.
+- The submitting page polls state until that exact ID appears in its database-backed queue/current/history data, then replaces the temporary card with the real row.
+- The Admin request form unlocks immediately after database confirmation, not after an arbitrary delay or unrelated refresh.
+- Public request form follows the same confirmation rule; its normal user cooldown still applies after a successful request.
+- Ambiguous network timeouts are reconciled against the queue before treating the request as failed, reducing duplicate submissions.
+
+## Deployment
+This release includes a Google Apps Script backend change in `google-apps-script/Code.gs` (the `add` response now includes `songId` and `createdAt`). Update the Apps Script project with this file and deploy a new version of the web app. Then upload the frontend files to GitHub Pages.
