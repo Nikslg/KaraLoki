@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.9.4.5 — admin client.
+  // KaraLoki v1.9.4.7 — admin client.
   "use strict";
   const cfg=window.KARALOKI_CONFIG||{},$=id=>document.getElementById(id),ADMIN_TOKEN_KEY="karaloki_admin_token",ADMIN_NAME_KEY="karaloki_admin_username";
   let adminToken=sessionStorage.getItem(ADMIN_TOKEN_KEY)||"",adminUsername=sessionStorage.getItem(ADMIN_NAME_KEY)||"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,pendingAdminSong=null,adminSongBusy=false,refreshBusy=false,refreshPromise=null,nextRefreshAt=0,retryDelay=2000,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false,queueDragActive=false;
@@ -7,6 +7,7 @@
   const playbackActionQueue=[]; let playbackQueueRunning=false,playbackConfirmedState=null,lastConfirmedPlaybackState=null;
   const logoutActionQueue=[];let logoutQueueRunning=false;const userActionLocks=new Set();const userInlineNotices=new Map();
   const rowLocks=new Set(); let pendingOps=0,optimisticOps=0;
+  const globalNotices=new Map();let noticeSequence=0;
   // JSONP callbacks remain callable after a client timeout: Apps Script may still
   // return late, and deleting the global function early causes kl_admin_cb_* errors.
   function api(action,params={}){
@@ -181,13 +182,17 @@
     });
   }
   function renderUsers(users){const pending=users.filter(u=>u.status==="Pending"),confirmed=users.filter(u=>u.status==="Confirmed");$("pending-count").textContent=String(pending.length);$("pending-list-count").textContent=String(pending.length);$("confirmed-count").textContent=String(confirmed.length);renderPending(pending);renderConfirmed(confirmed);}
-  function render(state){
-    lastState=state;if(!playbackActionBusy)lastConfirmedPlaybackState=JSON.parse(JSON.stringify(state));const c=state.current;
-    $("startup-loading")?.classList.add("is-hidden");
-    $("current-song").textContent=c?label(c):"Пока ничего не играет";$("current-requester").textContent=c?`Заказал(а): ${c.requester}`:"Нет активного заказа";
+  function renderPlayback(state){
+    const c=state.current;
+    $("current-song").textContent=c?label(c):"Пока ничего не играет";$("current-requester").textContent=c?`Заказал(а): ${c.requester||"—"}`:"Нет активного заказа";
     $("playback-state").textContent=state.paused?"Пауза":(c?"Играет":"Ожидание");countdownPaused=!!state.paused;serverOffsetMs=Number(state.serverNow||Date.now())-Date.now();
     countdownTarget=c&&!countdownPaused&&state.expiresAt?Number(state.expiresAt):(c&&!countdownPaused?Date.now()+serverOffsetMs+Math.max(0,Number(state.remainingSeconds)||0)*1000:null);
     $("countdown").textContent=c?time(state.remainingSeconds):"—";$("countdown").classList.toggle("paused",countdownPaused);
+  }
+  function render(state){
+    lastState=state;if(!playbackActionBusy)lastConfirmedPlaybackState=JSON.parse(JSON.stringify(state));
+    $("startup-loading")?.classList.add("is-hidden");
+    renderPlayback(state);
     $("pause-button").textContent=state.paused?"▶ Продолжить":"Ⅱ Пауза";
     renderCombinedQueue(state);renderSongList("history-list",state.history||[],"history");
     const settings=state.settings||{};$("autoplay-setting").checked=settings.autoplay!==false;if(document.activeElement!==$("song-duration-setting"))$("song-duration-setting").value=secondsToClock(settings.songSeconds||300);if(document.activeElement!==$("cooldown-setting"))$("cooldown-setting").value=secondsToClock(settings.cooldownSeconds??900);
@@ -195,12 +200,20 @@
     $("queue-count").textContent=`${(state.queue||[]).length} песен`;$("shuffle-button").disabled=Math.max(0,(state.queue||[]).length-3)<2;$("history-count").textContent=String((state.history||[]).length);renderUsers(state.users||[]);
   }
   async function refresh(force=false){
-    if(!adminToken||queueDragActive)return;
-    if(refreshPromise)return refreshPromise;
+    if(queueDragActive)return;
+    if(refreshPromise)return refreshPromise.then(()=>adminToken?refresh(force):undefined);
     if(!force&&Date.now()<nextRefreshAt)return;
     refreshBusy=true;
-    refreshPromise=(async()=>{try{const result=await api("state",{});if(!result||!result.state||!Array.isArray(result.state.queue)||!result.state.settings)throw new Error("Сервер вернул неполные данные панели. Проверьте версию Apps Script и подключение к таблице.");retryDelay=2000;nextRefreshAt=0;if(!queueDragActive&&optimisticOps===0&&!playbackActionBusy){render(result.state);$("startup-loading")?.classList.add("is-hidden");}}
-      catch(e){nextRefreshAt=Date.now()+retryDelay;retryDelay=Math.min(30000,retryDelay*2);if(/сессия администратора завершена/i.test(e.message||"")){adminToken="";adminUsername="";sessionStorage.removeItem(ADMIN_TOKEN_KEY);sessionStorage.removeItem(ADMIN_NAME_KEY);lastState=null;unlocked(false);message("login-message","Сессия администратора завершена. Войдите снова.",true);}else{message("control-message",e.message,true);const t=$("startup-loading")?.querySelector(".loading-text");if(t)t.textContent="Не удалось загрузить данные. Повторяем подключение…";}}
+    refreshPromise=(async()=>{try{
+        const result=await api("state",{});
+        if(!result||!result.state||!Array.isArray(result.state.queue)||!result.state.settings)throw new Error("Сервер вернул неполные данные панели. Проверьте версию Apps Script и подключение к таблице.");
+        retryDelay=2000;nextRefreshAt=0;
+        if(!queueDragActive){
+          if(adminToken&&optimisticOps===0&&!playbackActionBusy){render(result.state);}
+          else if(!adminToken){lastState=result.state;renderPlayback(result.state);$("startup-loading")?.classList.add("is-hidden");}
+        }
+      }
+      catch(e){nextRefreshAt=Date.now()+retryDelay;retryDelay=Math.min(30000,retryDelay*2);if(/сессия администратора завершена/i.test(e.message||"")){adminToken="";adminUsername="";sessionStorage.removeItem(ADMIN_TOKEN_KEY);sessionStorage.removeItem(ADMIN_NAME_KEY);lastState=null;unlocked(false);message("login-message","Сессия администратора завершена. Войдите снова.",true);}else{message(adminToken?"control-message":"login-message",e.message,true);const t=$("startup-loading")?.querySelector(".loading-text");if(t)t.textContent="Не удалось загрузить данные. Повторяем подключение…";}}
       finally{refreshBusy=false;refreshPromise=null;}})();
     return refreshPromise;
   }
