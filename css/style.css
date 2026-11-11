@@ -591,3 +591,37 @@ body{
 
 /* v1.9.4.5 notification placement override */
 .global-notifications{top:20% !important}
+
+
+/* v1.9.4.8 Admin panel corrections */
+#pending-users-list,
+#confirmed-users-list{
+  max-height:none!important;height:auto!important;overflow:visible!important;overflow-y:visible!important;
+  padding-right:0!important;scrollbar-width:none!important;
+}
+#pending-users-list::-webkit-scrollbar,#confirmed-users-list::-webkit-scrollbar{display:none!important}
+#pending-users-list .pending-card .unified-user-row{grid-template-columns:minmax(0,1fr) auto!important;gap:12px!important}
+#pending-users-list .pending-card .unified-user-info{grid-column:1;min-width:0}
+#pending-users-list .pending-card .pending-user-actions{grid-column:2;position:static!important;justify-self:end;align-self:center}
+#pending-users-list .pending-card .user-inline-feedback{grid-column:1/-1}
+#confirmed-users-list .unified-user-row{grid-template-columns:minmax(0,1fr) minmax(105px,132px) auto!important;gap:12px!important;min-height:62px}
+#confirmed-users-list .unified-user-info{min-width:0}
+#confirmed-users-list .unified-user-row .confirmed-cooldown{position:static!important;transform:none!important;width:auto!important;min-width:0!important;min-height:48px;justify-self:center;align-self:center}
+#confirmed-users-list .unified-user-actions{position:static!important;justify-self:end;align-self:center;flex-wrap:nowrap;gap:6px}
+#confirmed-users-list .unified-user-actions .icon-button.square-action{width:42px;height:42px;min-width:42px;max-width:42px}
+#confirmed-users-list .user-inline-feedback{grid-column:1/-1}
+.history-icon-button svg{width:19px;height:19px;display:block}
+.history-list .history-icon-button{display:inline-flex;align-items:center;justify-content:center}
+.pending-song .pending-song-status{display:inline-flex;align-items:center;gap:7px}
+.pending-song .pending-song-status:before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px rgba(32,190,164,.12);animation:pendingPulse 1s ease-in-out infinite alternate}
+#admin-request-fields input:disabled{opacity:.72;cursor:wait}
+@media(max-width:760px){
+ #confirmed-users-list .unified-user-row{grid-template-columns:minmax(0,1fr) 82px auto!important;gap:6px!important}
+ #confirmed-users-list .unified-user-actions{gap:3px}
+ #confirmed-users-list .unified-user-actions .icon-button.square-action{width:36px;height:36px;min-width:36px;max-width:36px}
+}
+@media(max-width:540px){
+ #pending-users-list .pending-card .unified-user-row{grid-template-columns:minmax(0,1fr) auto!important}
+ #confirmed-users-list .unified-user-row{grid-template-columns:minmax(0,1fr) 68px auto!important;gap:4px!important}
+ #confirmed-users-list .unified-user-actions .icon-button.square-action{width:31px;height:32px;min-width:31px;max-width:31px;font-size:.9rem}
+}

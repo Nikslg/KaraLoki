@@ -42,7 +42,7 @@
   function renderCombinedQueue(state){
     const list=$("queue-list");if(!list)return;list.replaceChildren();
     const entries=[...recentPrevious(state.previous).map(item=>({item,kind:"previous"})),...(state.current?[{item:state.current,kind:"current"}]:[]),...(state.queue||[]).map((item,index)=>({item,kind:"upcoming",index}))];
-    if(!entries.length){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пуста.";list.append(li);return;}
+    if(!entries.length&&!pendingAdminSong){const li=document.createElement("li");li.className="empty";li.textContent="Очередь пуста.";list.append(li);return;}
     entries.forEach(({item,kind,index})=>{
       const li=document.createElement("li");li.className=`queue-item admin-queue-item public-queue-item ${kind}`;li.dataset.songId=item.id||"";
       const num=document.createElement("span");num.className="queue-number";num.textContent=kind==="upcoming"?String(index+1).padStart(2,"0"):kind==="current"?"▶":"◷";
@@ -69,8 +69,26 @@
       }
       list.append(li);
     });
+    if(pendingAdminSong){
+      const li=document.createElement("li");li.className="queue-item public-queue-item upcoming pending-song";
+      const icon=document.createElement("span");icon.className="queue-number";icon.textContent="◷";
+      const body=document.createElement("div");body.className="queue-item-body";
+      const song=document.createElement("div");song.className="queue-song";song.textContent=pendingAdminSong.artist?`${pendingAdminSong.song} — ${pendingAdminSong.artist}`:pendingAdminSong.song;
+      const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=`${adminUsername||"Ведущий"} · Отправляется...`;
+      const status=document.createElement("span");status.className="pending-song-status";status.textContent="Ожидание подтверждения";
+      body.append(song,requester,status);li.append(icon,body);list.append(li);
+    }
   }
   function historyStatus(status){return ({Completed:"Исполнена",Skipped:"Пропущена",Interrupted:"Прервана",Removed:"Удалена",Replayed:"Повтор"})[status]||status;}
+  function setHistoryIcon(button,type){
+    const paths={
+      play:'<circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z" fill="currentColor" stroke="none"/>',
+      hide:'<path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c5 0 8.5 4.2 9 7-.2 1.1-.9 2.1-1.7 3"/><path d="M6.2 6.2C4.4 7.4 3.3 9.1 3 12c.5 2.8 4 7 9 7 1.2 0 2.3-.2 3.3-.7"/>',
+      delete:'<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5M14 11v5"/>'
+    };
+    button.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[type]}</svg>`;
+    button.classList.add("history-icon-button");
+  }
   async function playLocked(item,mode,button){
     const key=String(item.historyId||item.id);if(playingLocks.has(key))return;
     playingLocks.add(key);if(button){button.disabled=true;button.dataset.originalText=button.textContent;button.textContent="…";}
@@ -90,9 +108,9 @@
       const requester=document.createElement("div");requester.className="queue-requester";requester.textContent=`${item.requester||"—"}${item.result?" · "+historyStatus(item.result):""}`;
       body.append(song,requester);const actions=document.createElement("div");actions.className="queue-actions";
       if(mode==="history"){
-        const play=makeButton("▶","Добавить следующей после текущей",()=>playLocked(item,"history",play));actions.append(play);
-        actions.append(makeButton("◌","Скрыть запись",()=>adminAction("hideHistory",{historyId:item.historyId||item.id})));
-        actions.append(makeButton("×","Удалить запись",()=>{if(confirm("Удалить эту запись из истории навсегда?"))adminAction("deleteHistory",{historyId:item.historyId||item.id});},"remove-button"));
+        const play=makeButton("","Добавить следующей после текущей",()=>playLocked(item,"history",play));setHistoryIcon(play,"play");actions.append(play);
+        const hide=makeButton("","Скрыть запись",()=>adminAction("hideHistory",{historyId:item.historyId||item.id}));setHistoryIcon(hide,"hide");actions.append(hide);
+        const remove=makeButton("","Удалить запись",()=>{if(confirm("Удалить эту запись из истории навсегда?"))adminAction("deleteHistory",{historyId:item.historyId||item.id});},"remove-button");setHistoryIcon(remove,"delete");actions.append(remove);
       }
       li.append(num,body,actions);list.appendChild(li);
     });
@@ -137,13 +155,10 @@
       const meta=document.createElement("div");meta.className="user-meta-common";
       const login=document.createElement("span");login.textContent=`Вход: ${user.lastLogin?new Date(user.lastLogin).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—"}`;
       const device=document.createElement("span");const match=String(user.clientInfo||"").match(/device:([A-Za-z0-9-]+)/);device.textContent=`Устройство: ${match?match[1].slice(0,8):"—"}`;meta.append(login,device);
-      const cooldown=document.createElement("div");cooldown.className="confirmed-cooldown pending-cooldown";
-      const label=document.createElement("span");label.className="cooldown-label";label.textContent="Ожидание";
-      const value=document.createElement("span");value.className="cooldown-value";value.textContent="—";cooldown.append(label,value);
       const actions=document.createElement("div");actions.className="user-actions unified-user-actions pending-user-actions";
       actions.append(makeButton("✓","Одобрить пользователя",()=>approveUserOptimistic(user.name,li),"allow-square"),
         makeButton("×","Отклонить пользователя",()=>adminAction("denyUser",{name:user.name}),"deny-square"));
-      info.append(name,meta);row.append(info,cooldown,actions);
+      info.append(name,meta);row.append(info,actions);
       const feedback=document.createElement("div");feedback.className="user-inline-feedback hidden";feedback.id=`user-feedback-${encodeURIComponent(user.name)}`;
       const savedNotice=userInlineNotices.get(user.name);if(savedNotice){feedback.textContent=savedNotice.text;feedback.classList.remove("hidden");feedback.classList.add(savedNotice.error?"is-error":"is-success");}
       li.append(row,feedback);list.appendChild(li);
@@ -298,7 +313,7 @@
   function switchTab(tabId){document.querySelectorAll(".admin-tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===tabId));document.querySelectorAll(".admin-tab-panel").forEach(p=>p.classList.toggle("hidden",p.id!==tabId));}
   document.querySelectorAll(".admin-tab").forEach(b=>b.addEventListener("click",()=>switchTab(b.dataset.tab)));
   $("show-admin-pin").addEventListener("change",()=>{$("admin-pin").type=$("show-admin-pin").checked?"text":"password";});
-  $("admin-login-form").addEventListener("submit",async e=>{e.preventDefault();const username=$("admin-username").value.trim(),pin=$("admin-pin").value.trim();if(!/^\d{4}$/.test(pin)){message("login-message","PIN должен состоять ровно из четырёх цифр.",true);return;}$("login-button").disabled=true;$("login-button").classList.add("is-loading");message("login-message","");showLoading("Проверяем данные для входа…");try{if(!window.crypto?.subtle)throw new Error("Для безопасного входа нужен современный браузер с HTTPS.");const challenge=await api("adminChallenge",{username});const enc=new TextEncoder();const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",enc.encode(value)))).map(b=>b.toString(16).padStart(2,"0")).join("");const verifier=await digest(challenge.salt+":"+pin);const proof=await digest(verifier+":"+challenge.nonce);const result=await api("adminCheck",{username,nonce:challenge.nonce,proof});adminToken=result.adminToken;adminUsername=result.username;sessionStorage.setItem(ADMIN_TOKEN_KEY,adminToken);sessionStorage.setItem(ADMIN_NAME_KEY,adminUsername);unlocked(true);$("admin-username").value="";$("admin-pin").value="";switchTab("queue-tab");$("startup-loading")?.classList.remove("is-hidden");await refresh();}catch(err){message("login-message",err.message||"Не удалось выполнить вход. Проверьте данные и попробуйте снова.",true);}finally{$("login-button").disabled=false;$("login-button").classList.remove("is-loading");hideLoading();}});
+  $("admin-login-form").addEventListener("submit",async e=>{e.preventDefault();const username=$("admin-username").value.trim(),pin=$("admin-pin").value.trim();if(!/^\d{4}$/.test(pin)){message("login-message","PIN должен состоять ровно из четырёх цифр.",true);return;}$("login-button").disabled=true;$("login-button").classList.add("is-loading");message("login-message","");showLoading("Проверяем данные для входа…");try{if(!window.crypto?.subtle)throw new Error("Для безопасного входа нужен современный браузер с HTTPS.");const challenge=await api("adminChallenge",{username});const enc=new TextEncoder();const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",enc.encode(value)))).map(b=>b.toString(16).padStart(2,"0")).join("");const verifier=await digest(challenge.salt+":"+pin);const proof=await digest(verifier+":"+challenge.nonce);const result=await api("adminCheck",{username,nonce:challenge.nonce,proof});adminToken=result.adminToken;adminUsername=result.username;sessionStorage.setItem(ADMIN_TOKEN_KEY,adminToken);sessionStorage.setItem(ADMIN_NAME_KEY,adminUsername);hideLoading();message("login-success","Вход выполнен.");unlocked(true);$("admin-username").value="";$("admin-pin").value="";switchTab("queue-tab");$("startup-loading")?.classList.remove("is-hidden");await refresh();}catch(err){message("login-message",err.message||"Не удалось выполнить вход. Проверьте данные и попробуйте снова.",true);}finally{$("login-button").disabled=false;$("login-button").classList.remove("is-loading");hideLoading();}});
   $("lock-button").addEventListener("click",()=>{const old=adminToken;adminToken="";adminUsername="";sessionStorage.removeItem(ADMIN_TOKEN_KEY);sessionStorage.removeItem(ADMIN_NAME_KEY);if(old)api("adminLogout",{adminToken:old}).catch(()=>{});lastState=null;unlocked(false);$("admin-username").value="";$("admin-pin").value="";});
   function applyOptimisticPlayback(action,params={}){
     if(!lastState)return;
@@ -367,20 +382,22 @@
     adminSongBusy=true;pendingAdminSong={song,artist,id:"admin-pending-"+Date.now()};
     const fields=$("admin-request-fields"),button=$("admin-request-button");
     if(fields)fields.querySelectorAll("input").forEach(input=>input.disabled=true);
-    button.disabled=true;button.classList.add("is-loading");
+    button.disabled=true;button.classList.add("is-loading");button.textContent="Добавить в очередь";
     message("admin-request-message","Добавляем песню в очередь... Пожалуйста, подождите");
     if(lastState)renderCombinedQueue(lastState);
     try{
       const result=await api("add",{song,artist,requester:adminUsername,adminToken});
       pendingAdminSong=null;$("admin-song-input").value="";$("admin-artist-input").value="";
       message("admin-request-message",result.message||"Песня добавлена в очередь.");
-      await refresh(true);setTimeout(()=>{if(!adminSongBusy)message("admin-request-message","");},3500);
+      await refresh(true);
+      setTimeout(()=>{if(!adminSongBusy)message("admin-request-message","");},3500);
     }catch(err){
       pendingAdminSong=null;message("admin-request-message",err.message||"Не удалось добавить песню.",true);
       if(lastState)renderCombinedQueue(lastState);await refresh(true);
     }finally{
       adminSongBusy=false;if(fields)fields.querySelectorAll("input").forEach(input=>input.disabled=false);
-      button.disabled=false;button.classList.remove("is-loading");if(lastState)renderCombinedQueue(lastState);
+      button.disabled=false;button.classList.remove("is-loading");button.textContent="Добавить в очередь";
+      if(lastState)renderCombinedQueue(lastState);
     }
   });
   unlocked(!!adminToken);switchTab("queue-tab");

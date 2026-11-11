@@ -102,3 +102,13 @@ Apply the frontend files to GitHub Pages and replace `Code.gs` in the existing A
 ## v1.9.4.6
 - Restored Admin queue and history rendering helpers, including queue controls and history actions.
 - Moved global notifications to 20% from the top of the viewport.
+
+
+## v1.9.4.8 Admin UI hotfix
+- Login progress notice is cleared as soon as authentication succeeds, before the Admin data refresh completes.
+- Admin song requests now show a temporary pending song card in the queue, matching the public request flow; inputs remain locked while submitting and retain their values on failure.
+- History actions use refreshed SVG icons (play, hide, delete); queue action icons are unchanged.
+- Removed the artificial pending-user cooldown/"Ожидание" column.
+- Re-aligned confirmed-user cooldown and action controls.
+- Removed the unwanted internal scrollbars from pending and confirmed user lists.
+- No Apps Script backend changes; playback logic is unchanged.
