@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.9.5 — admin client.
+  // KaraLoki v1.9.5.1 — admin client.
   "use strict";
   const cfg=window.KARALOKI_CONFIG||{},$=id=>document.getElementById(id),ADMIN_TOKEN_KEY="karaloki_admin_token",ADMIN_NAME_KEY="karaloki_admin_username";
   let adminToken=sessionStorage.getItem(ADMIN_TOKEN_KEY)||"",adminUsername=sessionStorage.getItem(ADMIN_NAME_KEY)||"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,pendingAdminSong=null,adminSongBusy=false,refreshBusy=false,refreshPromise=null,nextRefreshAt=0,retryDelay=2000,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false,queueDragActive=false;
@@ -43,14 +43,14 @@
         normalizeName(item.requester)===normalizeName(fallback.requester);
     });
   }
-  async function waitForSongConfirmation(songId,fallback){
+  async function waitForSongConfirmation(songId,fallback,maxAttempts=8){
     let wait=700;
-    while(true){
-      await refresh(true);
-      if(stateHasSong(lastState,songId,fallback))return lastState;
-      await delay(wait);
-      wait=Math.min(2500,Math.round(wait*1.25));
+    for(let attempt=0;attempt<maxAttempts;attempt++){
+      const refreshed=await refresh(true);
+      if(refreshed&&stateHasSong(lastState,songId,fallback))return lastState;
+      if(attempt<maxAttempts-1){await delay(wait);wait=Math.min(2500,Math.round(wait*1.25));}
     }
+    return null;
   }
   function isUncertainRequestError(error){
     return /слишком долго|не удалось связаться|network|timeout|тайм-аут/i.test(String(error?.message||""));
@@ -314,8 +314,9 @@
           if(adminToken&&optimisticOps===0&&!playbackActionBusy){render(result.state);}
           else if(!adminToken){lastState=result.state;renderPlayback(result.state);$("startup-loading")?.classList.add("is-hidden");}
         }
+        return true;
       }
-      catch(e){nextRefreshAt=Date.now()+retryDelay;retryDelay=Math.min(30000,retryDelay*2);if(/сессия администратора завершена/i.test(e.message||"")){adminToken="";adminUsername="";sessionStorage.removeItem(ADMIN_TOKEN_KEY);sessionStorage.removeItem(ADMIN_NAME_KEY);lastState=null;unlocked(false);message("login-message","Сессия администратора завершена. Войдите снова.",true);}else{message(adminToken?"control-message":"login-message",e.message,true);const t=$("startup-loading")?.querySelector(".loading-text");if(t)t.textContent="Не удалось загрузить данные. Повторяем подключение…";}}
+      catch(e){nextRefreshAt=Date.now()+retryDelay;retryDelay=Math.min(30000,retryDelay*2);if(/сессия администратора завершена/i.test(e.message||"")){adminToken="";adminUsername="";sessionStorage.removeItem(ADMIN_TOKEN_KEY);sessionStorage.removeItem(ADMIN_NAME_KEY);lastState=null;unlocked(false);message("login-message","Сессия администратора завершена. Войдите снова.",true);}else{message(adminToken?"control-message":"login-message",e.message,true);const t=$("startup-loading")?.querySelector(".loading-text");if(t)t.textContent="Не удалось загрузить данные. Повторяем подключение…";}return false;}
       finally{refreshBusy=false;refreshPromise=null;}})();
     return refreshPromise;
   }
@@ -376,6 +377,7 @@
         try{
           await api(item.action,{...item.params});
           inlineUserMessage(item.feedback,successText[item.action]||"Изменения сохранены.");
+          if(item.action==="denyUser"&&item.row?.isConnected)item.row.remove();
           await refresh(true);
           setTimeout(()=>{userInlineNotices.delete(item.name);const current=document.getElementById(`user-feedback-${encodeURIComponent(item.name)}`);if(current)current.classList.add("hidden");},5000);
         }catch(e){
@@ -499,12 +501,13 @@
       if(result?.songId){pendingAdminSong.id=String(result.songId);pendingAdminSong.acknowledged=true;}
       else pendingAdminSong.acknowledged=true;
       if(lastState)renderCombinedQueue(lastState);
-      await waitForSongConfirmation(result?.songId||"",{song,artist,requester:adminUsername,startedAt});
+      message("admin-request-message","Запрос принят сервером. Обновляем очередь…");
+      const confirmed=await waitForSongConfirmation(result?.songId||"",{song,artist,requester:adminUsername,startedAt});
       pendingAdminSong=null;
       if(lastState)renderCombinedQueue(lastState);
       $("admin-song-input").value="";$("admin-artist-input").value="";
-      message("admin-request-message","Песня подтверждена в очереди.");
-      setTimeout(()=>message("admin-request-message",""),3500);
+      message("admin-request-message",confirmed?"Песня подтверждена в очереди.":"Песня принята сервером. Обновление очереди задерживается — она появится после следующего обновления.");
+      setTimeout(()=>message("admin-request-message",""),confirmed?3500:7000);
     }catch(err){
       pendingAdminSong=null;
       message("admin-request-message",err.message||"Не удалось добавить песню.",true);

@@ -1,4 +1,5 @@
-# KaraLoki v1.9.4.6
+# KaraLoki v1.9.5.1
+
 
 KaraLoki karaoke queue. The Public Queue and Admin interface remain hosted on GitHub Pages. Google Apps Script remains the backend and Google Sheets remains the database.
 
@@ -153,3 +154,9 @@ Apply the frontend files to GitHub Pages and replace `Code.gs` in the existing A
 
 ## Deployment
 This release includes a Google Apps Script backend change in `google-apps-script/Code.gs` (the `add` response now includes `songId` and `createdAt`). Update the Apps Script project with this file and deploy a new version of the web app. Then upload the frontend files to GitHub Pages.
+
+
+## v1.9.5.1 fixes
+- Admin and guest song-request confirmation polling is bounded, so forms cannot remain locked indefinitely when state refreshes fail or lag.
+- Successful admin rejection removes the pending card immediately after the server acknowledges the action; the next state refresh reconciles the lists.
+- Pending and accepted user lists scroll vertically with visible scrollbars while horizontal overflow remains hidden (preventing the duplicate horizontal scrollbar).

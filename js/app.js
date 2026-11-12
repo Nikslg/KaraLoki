@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.9.5 — guest client.
+  // KaraLoki v1.9.5.1 — guest client.
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
@@ -61,14 +61,14 @@
         normalizeName(item.requester)===normalizeName(fallback.requester);
     });
   }
-  async function waitForSongConfirmation(songId,fallback){
+  async function waitForSongConfirmation(songId,fallback,maxAttempts=8){
     let wait=700;
-    while(true){
-      await refresh(true);
-      if(stateHasSong(lastState,songId,fallback))return lastState;
-      await delay(wait);
-      wait=Math.min(2500,Math.round(wait*1.25));
+    for(let attempt=0;attempt<maxAttempts;attempt++){
+      const refreshed=await refresh(true);
+      if(refreshed&&stateHasSong(lastState,songId,fallback))return lastState;
+      if(attempt<maxAttempts-1){await delay(wait);wait=Math.min(2500,Math.round(wait*1.25));}
     }
+    return null;
   }
   function isUncertainRequestError(error){
     return /слишком долго|не удалось связаться|network|timeout|тайм-аут/i.test(String(error?.message||""));
@@ -154,8 +154,9 @@
           else if(claim.status==="sessionOccupied"){showOnly("guest-session-occupied-panel");$("session-occupied-message").textContent=`Имя «${guestName}» используется на другом устройстве. Вы можете запросить передачу сессии или выбрать другое имя.`;$("startup-loading")?.classList.add("is-hidden");return;}
         }
         render(result.state);
-      }}
-      catch(e){nextRefreshAt=Date.now()+retryDelay;retryDelay=Math.min(30000,retryDelay*2);if(!lastState){const overlay=$("startup-loading");if(overlay){overlay.classList.remove("is-hidden");const t=$("startup-loading-text");if(t)t.textContent="Не удалось загрузить очередь. Повторяем подключение…";}msg("guest-login-message","Пока нет ответа от сервера. Проверяем соединение повторно…");}}
+      }
+      return true;}
+      catch(e){nextRefreshAt=Date.now()+retryDelay;retryDelay=Math.min(30000,retryDelay*2);if(!lastState){const overlay=$("startup-loading");if(overlay){overlay.classList.remove("is-hidden");const t=$("startup-loading-text");if(t)t.textContent="Не удалось загрузить очередь. Повторяем подключение…";}msg("guest-login-message","Пока нет ответа от сервера. Проверяем соединение повторно…");}return false;}
       finally{refreshBusy=false;refreshPromise=null;}})();
     return refreshPromise;
   }
@@ -281,12 +282,13 @@
       if(result?.songId){pendingSongRequest.id=String(result.songId);pendingSongRequest.acknowledged=true;}
       else pendingSongRequest.acknowledged=true;
       if(lastState)renderQueue(lastState);
-      await waitForSongConfirmation(result?.songId||"",{song,artist,requester:guestName,startedAt});
+      msg("request-message","Запрос принят сервером. Обновляем очередь…");
+      const confirmed=await waitForSongConfirmation(result?.songId||"",{song,artist,requester:guestName,startedAt});
       pendingSongRequest=null;
       if(lastState)renderQueue(lastState);
       $("song-input").value="";$("artist-input").value="";
-      msg("request-message","Песня подтверждена в очереди.");
-      setTimeout(()=>msg("request-message",""),3500);
+      msg("request-message",confirmed?"Песня подтверждена в очереди.":"Песня принята сервером. Обновление очереди задерживается — она появится после следующего обновления.");
+      setTimeout(()=>msg("request-message",""),confirmed?3500:7000);
     }catch(err){
       pendingSongRequest=null;
       msg("request-message",err.message||"Не удалось добавить песню.",true);

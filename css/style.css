@@ -594,12 +594,21 @@ body{
 
 
 /* v1.9.4.8 Admin panel corrections */
-#pending-users-list,
-#confirmed-users-list{
-  max-height:none!important;height:auto!important;overflow:visible!important;overflow-y:visible!important;
-  padding-right:0!important;scrollbar-width:none!important;
+#pending-users-list{
+  max-height:min(38vh,300px)!important;height:auto!important;
+  overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior:contain;
+  padding-right:5px!important;scrollbar-width:thin!important;
+  scrollbar-color:rgba(178,111,255,.62) rgba(14,16,29,.55)!important;
 }
-#pending-users-list::-webkit-scrollbar,#confirmed-users-list::-webkit-scrollbar{display:none!important}
+#confirmed-users-list{
+  max-height:min(42vh,330px)!important;height:auto!important;
+  overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior:contain;
+  padding-right:5px!important;scrollbar-width:thin!important;
+  scrollbar-color:rgba(178,111,255,.62) rgba(14,16,29,.55)!important;
+}
+#pending-users-list::-webkit-scrollbar,#confirmed-users-list::-webkit-scrollbar{width:8px;height:0}
+#pending-users-list::-webkit-scrollbar-track,#confirmed-users-list::-webkit-scrollbar-track{background:rgba(14,16,29,.55);border-radius:10px}
+#pending-users-list::-webkit-scrollbar-thumb,#confirmed-users-list::-webkit-scrollbar-thumb{background:rgba(178,111,255,.62);border-radius:10px}
 #pending-users-list .pending-card .unified-user-row{grid-template-columns:minmax(0,1fr) auto!important;gap:12px!important}
 #pending-users-list .pending-card .unified-user-info{grid-column:1;min-width:0}
 #pending-users-list .pending-card .pending-user-actions{grid-column:2;position:static!important;justify-self:end;align-self:center}
