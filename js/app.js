@@ -1,5 +1,5 @@
 (() => {
-  // KaraLoki v1.9.5.1 — guest client.
+  // KaraLoki v1.9.5.2 — guest client.
   "use strict";
   const cfg = window.KARALOKI_CONFIG || {}, $ = id => document.getElementById(id);
   const NAME_KEY = "karaloki_guest_name";
@@ -17,7 +17,7 @@
       const finish=(err,data)=>{if(settled){cleanup();return;}settled=true;clearTimeout(timeout);err?reject(err):resolve(data);if(err){graceTimer=setTimeout(cleanup,120000);}else cleanup();};
       const timeout=setTimeout(()=>finish(new Error("Сервер отвечает слишком долго. Попробуйте ещё раз.")),45000);
       window[callback] = data => {if(settled){cleanup();return;}data&&data.ok?finish(null,data):finish(new Error(data?.error || "Не удалось выполнить запрос."));};
-      script.onerror = () => {if(!settled)finish(new Error("Не удалось связаться с сервером. Проверьте URL Apps Script."));else cleanup();};
+      script.onerror = () => {if(!settled){settled=true;clearTimeout(timeout);reject(new Error("Не удалось связаться с сервером. Проверьте URL Apps Script."));cleanup();}else cleanup();};
       script.src = cfg.API_URL + (cfg.API_URL.includes("?")?"&":"?") + query.toString(); document.body.appendChild(script);
     });
   }
@@ -313,5 +313,6 @@
   }
   setInterval(()=>{if(countdownTarget!==null&&!countdownPaused){const remaining=Math.ceil((countdownTarget-(Date.now()+serverOffsetMs))/1000);$("countdown").textContent=time(remaining);if(remaining<=0)requestAdvance();}updateRestrictions();},1000);
   document.querySelectorAll('a[href="admin.html"]') .forEach(a=>a.addEventListener("click",e=>{e.preventDefault();const href=a.href,overlay=$("startup-loading");if(overlay){overlay.classList.remove("is-hidden");const t=overlay.querySelector(".loading-text");if(t)t.textContent="Открываем панель ведущего…";}setTimeout(()=>{window.location.href=href;},120);}));
-  refresh();setInterval(refresh,Math.max(5000,Number(cfg.REFRESH_MS)||5000));
+  refresh();
+  window.KaraLokiStateSync?.start(refresh,Math.max(5000,Number(cfg.REFRESH_MS)||5000));
 })();

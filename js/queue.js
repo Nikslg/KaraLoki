@@ -12,7 +12,7 @@
       const finish=(err,data)=>{if(settled){cleanup();return;}settled=true;clearTimeout(timeout);err?reject(err):resolve(data);if(err)graceTimer=setTimeout(cleanup,120000);else cleanup();};
       const timeout=setTimeout(()=>finish(new Error("Сервер отвечает слишком долго.")),30000);
       window[callback]=data=>{if(settled){cleanup();return;}data&&data.ok?finish(null,data):finish(new Error(data?.error||"Не удалось загрузить очередь."));};
-      script.onerror=()=>{if(!settled)finish(new Error("Не удалось связаться с сервером. Проверьте URL Apps Script."));else cleanup();};
+      script.onerror=()=>{if(!settled){settled=true;clearTimeout(timeout);reject(new Error("Не удалось связаться с сервером. Проверьте URL Apps Script."));cleanup();}else cleanup();};
       script.src=cfg.API_URL+(cfg.API_URL.includes("?")?"&":"?")+query.toString();document.body.appendChild(script);
     });
   }
@@ -67,5 +67,6 @@
       $("countdown").textContent=time(remaining);
     }
   },1000);
-  refresh();setInterval(refresh,Math.max(5000,Number(cfg.REFRESH_MS)||5000));
+  refresh();
+  window.KaraLokiStateSync?.start(refresh,Math.max(5000,Number(cfg.REFRESH_MS)||5000));
 })();

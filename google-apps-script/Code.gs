@@ -1,5 +1,5 @@
 /**
- * KaraLoki v1.9.5.1 — Google Apps Script backend.
+ * KaraLoki v1.9.5.2 — Google Apps Script backend.
  * Guest identity is the approved display name (case-insensitive matching).
  * Device IDs and room codes are no longer used. Google Sheets remains the database.
  * Admin identity and PIN are stored in the private Admin sheet. Admin sessions are server-validated.
@@ -258,7 +258,12 @@ function stateWhileLocked_(admin, guestName, sessionToken) {
   const out = {current:current?publicSong_(current):null,queue,history,previous,paused:String(pb.paused)==="true",remainingSeconds:current?remaining:null,serverNow,expiresAt,eventMode:settings.eventMode,settings};
   if (admin) {
     const sessions=getRows_(ss.getSheetByName("Sessions"));
-    const deviceRows=getRows_(ss.getSheetByName("Devices"));out.users = getRows_(ss.getSheetByName("Users")).map(user => {const sess=sessions.find(x=>x.nameKey===nameKey_(user.name));const age=sess?Date.now()-Number(sess.lastHeartbeat||0):Infinity;return {name:user.name,status:user.status,cooldownRemaining:Math.max(0,Math.ceil((Number(user.cooldownUntil||0)-Date.now())/1000)),banRemaining:Math.max(0,Math.ceil((Number(user.bannedUntil||0)-Date.now())/1000)),presence:!sess||!sess.token||age>=60*60*1000?"offline":age<=90*1000?"online":"recent",sessionActive:!!(sess&&sess.token&&age<60*60*1000),lastLogin:sess?Number(sess.lastLogin||sess.lastHeartbeat||0):0,clientInfo:sess?String(sess.clientInfo||""):"",deviceIds:deviceRows.filter(d=>d.nameKey===nameKey_(user.name)&&String(d.active).toLowerCase()==="true").map(d=>String(d.deviceId))};});
+    const deviceRows=getRows_(ss.getSheetByName("Devices"));
+    const sessionByName=new Map(sessions.map(session=>[String(session.nameKey||""),session]));
+    const devicesByName=new Map();
+    deviceRows.forEach(device=>{if(String(device.active).toLowerCase()!=="true")return;const key=String(device.nameKey||"");if(!devicesByName.has(key))devicesByName.set(key,[]);devicesByName.get(key).push(String(device.deviceId));});
+    const now=Date.now();
+    out.users=getRows_(ss.getSheetByName("Users")).map(user=>{const key=nameKey_(user.name),sess=sessionByName.get(key)||null,age=sess?now-Number(sess.lastHeartbeat||0):Infinity;return {name:user.name,status:user.status,cooldownRemaining:Math.max(0,Math.ceil((Number(user.cooldownUntil||0)-now)/1000)),banRemaining:Math.max(0,Math.ceil((Number(user.bannedUntil||0)-now)/1000)),presence:!sess||!sess.token||age>=60*60*1000?"offline":age<=90*1000?"online":"recent",sessionActive:!!(sess&&sess.token&&age<60*60*1000),lastLogin:sess?Number(sess.lastLogin||sess.lastHeartbeat||0):0,clientInfo:sess?String(sess.clientInfo||""):"",deviceIds:devicesByName.get(key)||[]};});
   } else {
     const key = nameKey_(guestName), user = key ? findUser_(key) : null;
     const sess=user?findSession_(key):null;

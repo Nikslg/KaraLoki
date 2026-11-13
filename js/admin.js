@@ -1,8 +1,8 @@
 (() => {
-  // KaraLoki v1.9.5.1 — admin client.
+  // KaraLoki v1.9.5.2 — admin client.
   "use strict";
   const cfg=window.KARALOKI_CONFIG||{},$=id=>document.getElementById(id),ADMIN_TOKEN_KEY="karaloki_admin_token",ADMIN_NAME_KEY="karaloki_admin_username";
-  let adminToken=sessionStorage.getItem(ADMIN_TOKEN_KEY)||"",adminUsername=sessionStorage.getItem(ADMIN_NAME_KEY)||"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,pendingAdminSong=null,adminSongBusy=false,refreshBusy=false,refreshPromise=null,nextRefreshAt=0,retryDelay=2000,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false,queueDragActive=false;
+  let adminToken=sessionStorage.getItem(ADMIN_TOKEN_KEY)||"",adminUsername=sessionStorage.getItem(ADMIN_NAME_KEY)||"",lastState=null,countdownTarget=null,countdownPaused=false,busy=false,pendingAdminSong=null,adminSongBusy=false,refreshBusy=false,refreshPromise=null,refreshAgain=false,nextRefreshAt=0,retryDelay=2000,serverOffsetMs=0,zeroAdvanceBusy=false,playbackActionBusy=false,queueDragActive=false;
   let activeDraggedElement=null;const playingLocks=new Set();
   const playbackActionQueue=[]; let playbackQueueRunning=false,playbackConfirmedState=null,lastConfirmedPlaybackState=null;
   const logoutActionQueue=[];let logoutQueueRunning=false;const userActionLocks=new Set();const userInlineNotices=new Map();
@@ -22,7 +22,7 @@
       const finish=(err,data)=>{if(settled){cleanup();return;}settled=true;clearTimeout(timeout);err?reject(err):resolve(data);if(err){graceTimer=setTimeout(cleanup,120000);}else cleanup();};
       const timeout=setTimeout(()=>finish(new Error("Сервер отвечает слишком долго. Повторите попытку.")),45000);
       window[callback]=data=>{if(settled){cleanup();return;}if(data&&data.ok)finish(null,data);else finish(new Error(data?.error||"Не удалось выполнить запрос."));};
-      script.onerror=()=>{if(!settled)finish(new Error("Не удалось связаться с Apps Script."));else cleanup();};
+      script.onerror=()=>{if(!settled){settled=true;clearTimeout(timeout);reject(new Error("Не удалось связаться с Apps Script."));cleanup();}else cleanup();};
       script.src=cfg.API_URL+(cfg.API_URL.includes("?")?"&":"?")+query.toString();document.body.appendChild(script);
     });
   }
@@ -302,9 +302,9 @@
     $("queue-count").textContent=`${(state.queue||[]).length} песен`;$("shuffle-button").disabled=Math.max(0,(state.queue||[]).length-3)<2;$("history-count").textContent=String((state.history||[]).length);renderUsers(state.users||[]);
   }
   async function refresh(force=false){
-    if(queueDragActive)return;
-    if(refreshPromise)return refreshPromise.then(()=>adminToken?refresh(force):undefined);
-    if(!force&&Date.now()<nextRefreshAt)return;
+    if(queueDragActive)return false;
+    if(refreshPromise){if(force)refreshAgain=true;return refreshPromise;}
+    if(!force&&Date.now()<nextRefreshAt)return false;
     refreshBusy=true;
     refreshPromise=(async()=>{try{
         const result=await api("state",{});
@@ -317,7 +317,11 @@
         return true;
       }
       catch(e){nextRefreshAt=Date.now()+retryDelay;retryDelay=Math.min(30000,retryDelay*2);if(/сессия администратора завершена/i.test(e.message||"")){adminToken="";adminUsername="";sessionStorage.removeItem(ADMIN_TOKEN_KEY);sessionStorage.removeItem(ADMIN_NAME_KEY);lastState=null;unlocked(false);message("login-message","Сессия администратора завершена. Войдите снова.",true);}else{message(adminToken?"control-message":"login-message",e.message,true);const t=$("startup-loading")?.querySelector(".loading-text");if(t)t.textContent="Не удалось загрузить данные. Повторяем подключение…";}return false;}
-      finally{refreshBusy=false;refreshPromise=null;}})();
+      finally{
+        refreshBusy=false;
+        refreshPromise=null;
+        if(refreshAgain){refreshAgain=false; if(adminToken&&!queueDragActive) Promise.resolve().then(()=>refresh(true));}
+      }})();
     return refreshPromise;
   }
   const pendingText={skip:"Пропускаем песню... ожидайте",pause:"Приостанавливаем воспроизведение... ожидайте",resume:"Возобновляем воспроизведение... ожидайте",play:"Запускаем выбранную песню... ожидайте",clearQueue:"Очищаем очередь... ожидайте",add:"Добавляем песню в очередь... ожидайте",remove:"Удаляем песню... ожидайте",move:"Обновляем порядок очереди... ожидайте",approveUser:"Подтверждаем пользователя... ожидайте",denyUser:"Отклоняем пользователя... ожидайте",liftCooldown:"Снимаем ожидание... ожидайте",banUser:"Применяем временную блокировку... ожидайте",returnToPending:"Возвращаем пользователя на подтверждение... ожидайте",hideHistory:"Скрываем запись истории... ожидайте",deleteHistory:"Удаляем запись истории... ожидайте"};
@@ -378,7 +382,9 @@
           await api(item.action,{...item.params});
           inlineUserMessage(item.feedback,successText[item.action]||"Изменения сохранены.");
           if(item.action==="denyUser"&&item.row?.isConnected)item.row.remove();
-          await refresh(true);
+          // State reconciliation is deliberately detached from the user-action FIFO.
+          // A slow state read must not hold the next approve/reject action hostage.
+          refresh(true);
           setTimeout(()=>{userInlineNotices.delete(item.name);const current=document.getElementById(`user-feedback-${encodeURIComponent(item.name)}`);if(current)current.classList.add("hidden");},5000);
         }catch(e){
           inlineUserMessage(item.feedback,e.message||"Не удалось выполнить действие.",true);
@@ -392,7 +398,7 @@
   }
   function actionMessageId(action){if(["pause","resume","skip"].includes(action))return "control-message";if(["approveUser","denyUser","liftCooldown","banUser","returnToPending",].includes(action))return "users-message";return "queue-message";}
   async function adminAction(action,params={}){
-    const userScoped=["denyUser","liftCooldown","banUser","returnToPending","forceLogoutSession"].includes(action)&&params.name;
+    const userScoped=["approveUser","denyUser","liftCooldown","banUser","returnToPending","forceLogoutSession"].includes(action)&&params.name;
     if(userScoped){
       const name=String(params.name),key=normalizeName(name);
       if(userActionLocks.has(key))return Promise.resolve();
@@ -410,9 +416,10 @@
       await api(action,{...params});
       const success=action==="play"&&params.source==="history"?"Песня добавлена следующей после текущей.":(successText[action]||"Изменения сохранены.");
       message(target,success);
-      await refresh(true);
+      // Do not keep controls locked while the independent state snapshot is loading.
+      refresh(true);
     }catch(e){message(target,e.message,true);}
-    finally{busy=false;if(lastState){render(lastState);$("pause-button").textContent=lastState.paused?"▶ Продолжить":"Ⅱ Пауза";}}
+    finally{busy=false;if(lastState){$("pause-button").textContent=lastState.paused?"▶ Продолжить":"Ⅱ Пауза";}}
   }
   async function queueAction(action,songId){if(action==="remove"&&!confirm("Удалить эту песню из очереди? Ожидание заказчика будет снято."))return;await adminAction(action,{songId});}
   function switchTab(tabId){document.querySelectorAll(".admin-tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===tabId));document.querySelectorAll(".admin-tab-panel").forEach(p=>p.classList.toggle("hidden",p.id!==tabId));}
@@ -532,5 +539,6 @@
   }
   setInterval(()=>{if(countdownTarget!==null&&!countdownPaused){const remaining=Math.ceil((countdownTarget-(Date.now()+serverOffsetMs))/1000);$("countdown").textContent=time(remaining);if(remaining<=0)requestAdvance();}},1000);
   document.querySelectorAll('a[href="index.html"]') .forEach(a=>a.addEventListener("click",e=>{e.preventDefault();const href=a.href,overlay=$("startup-loading");if(overlay){overlay.classList.remove("is-hidden");const t=overlay.querySelector(".loading-text");if(t)t.textContent="Возвращаемся к публичной очереди…";}setTimeout(()=>{window.location.href=href;},120);}));
-  refresh();setInterval(refresh,Math.max(5000,Number(cfg.REFRESH_MS)||5000));
+  refresh();
+  window.KaraLokiStateSync?.start(refresh,Math.max(5000,Number(cfg.REFRESH_MS)||5000));
 })();

@@ -1,7 +1,15 @@
-# KaraLoki v1.9.5.1
+# KaraLoki v1.9.5.2
 
 
 KaraLoki karaoke queue. The Public Queue and Admin interface remain hosted on GitHub Pages. Google Apps Script remains the backend and Google Sheets remains the database.
+
+
+## v1.9.5.2 — refresh stability
+- Added a shared completion-driven state polling scheduler used by both Public and Admin pages. Polling pauses while a tab is hidden and resumes with one refresh when visible.
+- Admin refreshes now reuse the in-flight request instead of chaining additional refresh promises. Forced refresh requests are coalesced into at most one follow-up.
+- User approval/rejection actions no longer wait for a state refresh before releasing the FIFO action queue. A slow refresh therefore cannot hold later user actions hostage.
+- Optimized Admin state assembly by indexing sessions and active devices once instead of repeatedly scanning those collections for every user.
+- Existing Admin controls, user action ordering, guest heartbeat, and backend data model are retained.
 
 ## What's included
 - Original v1.8.7.2 project structure and Admin controls retained on GitHub Pages.
@@ -153,7 +161,7 @@ Apply the frontend files to GitHub Pages and replace `Code.gs` in the existing A
 - Ambiguous network timeouts are reconciled against the queue before treating the request as failed, reducing duplicate submissions.
 
 ## Deployment
-This release includes a Google Apps Script backend change in `google-apps-script/Code.gs` (the `add` response now includes `songId` and `createdAt`). Update the Apps Script project with this file and deploy a new version of the web app. Then upload the frontend files to GitHub Pages.
+This release includes an Apps Script optimization in `google-apps-script/Code.gs` for Admin state assembly. Replace the existing Apps Script source with this version and deploy a new version of the web app. Then upload the frontend files to GitHub Pages. Keep the existing spreadsheet and script properties; no sheet reset or data migration is required.
 
 
 ## v1.9.5.1 fixes
